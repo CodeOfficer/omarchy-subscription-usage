@@ -37,6 +37,9 @@ function normalizeLimit(limit, nowMs) {
     remaining: remaining,
     resetMs: resetMs,
     timeRemainingMs: timeRemaining,
+    // The collector's full label ("Gemini (5-hour)") keeps the window name
+    // that the short title drops.
+    rawLabel: String(limit.label || ""),
     primary: limit.primary === true
   }
 }
@@ -77,6 +80,32 @@ function parseModelTokens(raw) {
   return rows
 }
 
+// What a provider's record should look like for the widget to be right.
+// Each warning is a short sentence; none means the record matches what the
+// widget was built against. Used by the D debug view and the integration test.
+function contractWarnings(raw, provider, providerId) {
+  var warnings = []
+  if (!raw || typeof raw !== "object") return ["record is not a JSON object"]
+  if (!Array.isArray(raw.limits)) warnings.push("no limits array")
+  else if (raw.limits.length === 0) warnings.push("limits array is empty")
+  if (!provider.headline) warnings.push("no headline limit for the bar")
+  if (providerId !== "gemini" && !provider.weekly) warnings.push("no weekly window, so no pace")
+  if (providerId === "gemini") {
+    var hasGemini = false
+    for (var i = 0; i < provider.pools.length; i++) {
+      if (String(provider.pools[i].label).toLowerCase().indexOf("gemini") === 0) hasGemini = true
+    }
+    if (!hasGemini) warnings.push("Google reported no Gemini pool")
+  }
+  if (raw.limitsStale === true) warnings.push("limits are stale (last good answer reused)")
+  if (raw.authHelpText) warnings.push("sign-in: " + String(raw.authHelpText).substring(0, 160))
+  for (var j = 0; j < provider.limits.length; j++) {
+    var limit = provider.limits[j]
+    if (limit.used > 0 && !started(limit)) warnings.push(limit.label + " is used but has no reset time")
+  }
+  return warnings
+}
+
 function parseProvider(stdout, providerId, nowMs) {
   try {
     var raw = JSON.parse(String(stdout || ""))
@@ -90,9 +119,7 @@ function parseProvider(stdout, providerId, nowMs) {
       normalized.push(item)
       if (item.primary && !primary) primary = item
     }
-    return {
-      ok: true,
-      provider: {
+    var provider = {
         id: String(providerId || raw.id || ""),
         name: String(raw.name || providerId || ""),
         plan: String(raw.plan || ""),
@@ -106,9 +133,13 @@ function parseProvider(stdout, providerId, nowMs) {
         pools: parsePools(raw.quotaPools, nowMs),
         todayModels: parseModelTokens(raw.todayTokensByModel),
         recentDays: Array.isArray(raw.recentDays) ? raw.recentDays : [],
-        updatedAt: String(raw.updatedAt || "")
-      }
+        updatedAt: String(raw.updatedAt || ""),
+        tier: String(raw.tierLabel || ""),
+        fetchedAtMs: number(raw.limitsFetchedAt, 0),
+        stale: raw.limitsStale === true
     }
+    provider.warnings = contractWarnings(raw, provider, providerId)
+    return { ok: true, provider: provider }
   } catch (error) {
     return { ok: false, error: "Could not parse " + providerId + " usage" }
   }
@@ -168,9 +199,9 @@ function poolText(pool, nowMs) {
 }
 
 function windowName(limit) {
-  var label = String(limit ? limit.label : "").toLowerCase()
-  if (label.indexOf("weekly") === 0) return "weekly"
-  var match = /\(([^)]+)\)/.exec(String(limit ? limit.label : ""))
+  var full = String(limit ? (limit.rawLabel || limit.label) : "")
+  if (full.toLowerCase().indexOf("weekly") === 0) return "weekly"
+  var match = /\(([^)]+)\)/.exec(full)
   return match ? match[1] : ""
 }
 
@@ -232,6 +263,7 @@ var exportsObject = {
   countdown: countdown,
   paceText: paceText,
   started: started,
+  contractWarnings: contractWarnings,
   parsePools: parsePools,
   parseModelTokens: parseModelTokens,
   poolText: poolText,

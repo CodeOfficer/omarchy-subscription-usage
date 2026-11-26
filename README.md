@@ -55,6 +55,8 @@ omarchy plugin disable omarchy.agents
 - Left-click the bar display to open or close details.
 - Right-click or middle-click to refresh.
 - Press `R` while the panel is open to refresh.
+- Press `D` while the panel is open to show debug info: each collector's exit code, timing, plan,
+  data age, and any way its record no longer matches what the widget expects (shown in red).
 - Press Escape to close the panel.
 
 The plugin refreshes every five minutes by default. Change the interval with:
@@ -62,6 +64,16 @@ The plugin refreshes every five minutes by default. Change the interval with:
 ```bash
 omarchy bar set codeofficer.agent-usage refreshIntervalSec 600 --json
 ```
+
+## Tests
+
+```bash
+node test/model.test.js              # parsing and display logic, no network
+node test/integration.test.js        # runs every collector on this machine and checks its record
+node test/integration.test.js --live # also checks the running widget agrees
+```
+
+The integration test only reads usage; it never spends quota. A `FAIL` line names what changed.
 
 ## Removal
 

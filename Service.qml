@@ -13,6 +13,7 @@ Item {
   property bool refreshing: false
   property string lastError: ""
   property date lastUpdated: new Date(0)
+  property double _startedAt: 0
   property int _pending: 0
   property string _claudeOutput: ""
   property string _claudeError: ""
@@ -43,6 +44,7 @@ Item {
   function refresh() {
     if (refreshing || claudeProcess.running || codexProcess.running || geminiProcess.running) return
     refreshing = true
+    _startedAt = Date.now()
     lastError = ""
     _pending = 3
     _claudeOutput = ""
@@ -72,18 +74,27 @@ Item {
   // Turns one collector run into the provider record the panel draws. A
   // collector that exits cleanly but has no limits to show (a lapsed sign-in)
   // keeps its help text as the status, so the panel can say what to do.
-  function collected(current, providerId, name, exitCode, stdout, stderr) {
+  function collected(current, providerId, name, command, exitCode, stdout, stderr) {
+    // What the D debug view shows: how this run went, apart from what it said.
+    var debug = {
+      command: command.join(" "),
+      exitCode: exitCode,
+      ms: Math.max(0, Date.now() - _startedAt),
+      bytes: stdout.length,
+      stderr: stderr ? conciseError(stderr, "") : "",
+      at: new Date().toISOString()
+    }
     if (exitCode !== 0) {
       var failure = conciseError(stderr || stdout, "Could not load " + name + " usage")
       lastError = failure
-      return Object.assign({}, current, { status: failure })
+      return Object.assign({}, current, { status: failure, debug: debug, warnings: ["collector exited with code " + exitCode] })
     }
     var parsed = Model.parseProvider(stdout, providerId, Date.now())
     if (!parsed.ok) {
       lastError = parsed.error
-      return Object.assign({}, current, { status: parsed.error })
+      return Object.assign({}, current, { status: parsed.error, debug: debug, warnings: ["collector output is not valid JSON"] })
     }
-    return Object.assign({}, parsed.provider, { id: providerId, name: name })
+    return Object.assign({}, parsed.provider, { id: providerId, name: name, debug: debug })
   }
 
   Timer {
@@ -109,7 +120,7 @@ Item {
       onStreamFinished: root._claudeError = text
     }
     onExited: function(exitCode) {
-      root.claude = root.collected(root.claude, "claude", "Claude", exitCode,
+      root.claude = root.collected(root.claude, "claude", "Claude", claudeProcess.command, exitCode,
         String(claudeStdout.text || root._claudeOutput || ""),
         String(claudeStderr.text || root._claudeError || ""))
       root.finishOne()
@@ -131,7 +142,7 @@ Item {
       onStreamFinished: root._codexError = text
     }
     onExited: function(exitCode) {
-      root.codex = root.collected(root.codex, "codex", "Codex", exitCode,
+      root.codex = root.collected(root.codex, "codex", "Codex", codexProcess.command, exitCode,
         String(codexStdout.text || root._codexOutput || ""),
         String(codexStderr.text || root._codexError || ""))
       root.finishOne()
@@ -153,7 +164,7 @@ Item {
       onStreamFinished: root._geminiError = text
     }
     onExited: function(exitCode) {
-      root.gemini = root.collected(root.gemini, "gemini", "Gemini", exitCode,
+      root.gemini = root.collected(root.gemini, "gemini", "Gemini", geminiProcess.command, exitCode,
         String(geminiStdout.text || root._geminiOutput || ""),
         String(geminiStderr.text || root._geminiError || ""))
       root.finishOne()

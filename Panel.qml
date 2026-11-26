@@ -15,6 +15,9 @@ Panel {
   manageIpc: false
 
   property double nowMs: Date.now()
+  // D in the open panel: how each collector run went and whether its record
+  // still matches what the widget expects.
+  property bool debug: false
   readonly property color foreground: Color.popups.text
   readonly property color urgent: bar ? bar.urgent : Color.urgent
   readonly property color dim: Qt.darker(foreground, 1.55)
@@ -56,6 +59,7 @@ Panel {
     function hide(): void { root.close() }
     function toggle(): void { root.toggle() }
     function refresh(): string { root.refresh(); return "ok" }
+    function debug(): string { root.debug = !root.debug; return root.debug ? "on" : "off" }
     function status(): string {
       return JSON.stringify({
         refreshing: service.refreshing,
@@ -69,11 +73,15 @@ Panel {
 
   function providerStatus(provider) {
     var weekly = provider ? provider.weekly : null
+    var headline = provider ? provider.headline : null
     return {
-      remaining: weekly ? weekly.remaining : null,
-      resetsAt: weekly && Model.started(weekly) ? new Date(weekly.resetMs).toISOString() : "",
+      window: Model.windowName(headline),
+      remaining: headline ? headline.remaining : null,
+      resetsAt: headline && Model.started(headline) ? new Date(headline.resetMs).toISOString() : "",
       behindPace: Model.behindPace(weekly, nowMs),
-      status: provider ? provider.status : ""
+      status: provider ? provider.status : "",
+      warnings: provider && Array.isArray(provider.warnings) ? provider.warnings : [],
+      debug: provider && provider.debug ? provider.debug : null
     }
   }
 
@@ -150,7 +158,10 @@ Panel {
       onCloseRequested: root.close()
       onTabRequested: function(direction) { root.switchPanel(direction) }
       onActivateRequested: root.refresh()
-      onTextKey: function(text) { if (text === "r" || text === "R") root.refresh() }
+      onTextKey: function(text) {
+        if (text === "r" || text === "R") root.refresh()
+        else if (text === "d" || text === "D") root.debug = !root.debug
+      }
 
       Flickable {
         id: panelFlick
@@ -181,7 +192,7 @@ Panel {
           }
 
           Text {
-            text: service.refreshing ? "Refreshing…" : "R to refresh"
+            text: service.refreshing ? "Refreshing…" : (root.debug ? "R refresh · D hide debug" : "R refresh · D debug")
             color: root.dim
             font.family: root.fontFamily
             font.pixelSize: Style.font.caption
@@ -348,6 +359,41 @@ Panel {
           color: card.behind ? root.urgent : root.dim
           font.family: root.fontFamily
           font.pixelSize: Style.font.body
+        }
+      }
+    }
+
+    Column {
+      visible: root.debug
+      width: parent.width
+      spacing: Style.space(2)
+
+      Repeater {
+        model: {
+          var p = card.provider || {}
+          var d = p.debug || {}
+          var w = Array.isArray(p.warnings) ? p.warnings : []
+          var rows = [
+            "collector  " + (d.command || "—").replace(/^.*\//, ""),
+            "exit " + (d.exitCode === undefined ? "—" : d.exitCode) + " · " + (d.ms || 0) + " ms · " + (d.bytes || 0) + " bytes",
+            "plan " + (p.tier || "—") + " · fetched " + (p.fetchedAtMs > 0 ? Model.countdown(root.nowMs, p.fetchedAtMs) + " ago" : "—") + (p.stale ? " · STALE" : ""),
+            "limits " + (Array.isArray(p.limits) ? p.limits.length : 0) + " · pools " + (Array.isArray(p.pools) ? p.pools.length : 0)
+              + " · headline " + (p.headline ? (Model.windowName(p.headline) || p.headline.label) : "none")
+          ]
+          if (d.stderr) rows.push("stderr  " + d.stderr)
+          if (w.length === 0) rows.push("✓ record matches the widget's expectations")
+          for (var i = 0; i < w.length; i++) rows.push("! " + w[i])
+          return rows
+        }
+        delegate: Text {
+          required property var modelData
+          width: card.width
+          textFormat: Text.PlainText
+          text: modelData
+          color: String(modelData).indexOf("! ") === 0 ? root.urgent : root.dim
+          font.family: root.fontFamily
+          font.pixelSize: Style.font.caption
+          wrapMode: Text.WrapAnywhere
         }
       }
     }

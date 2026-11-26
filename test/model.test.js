@@ -27,11 +27,11 @@ assert.strictEqual(l.provider.weekly, null);
 console.log("all Model.js checks passed");
 // Gemini record from bin/gemini-usage: headline is the primary 5-hour pool
 const gem = M.parseProvider(JSON.stringify({
-  limits:[{label:"Gemini (5-hour)",percent:0.0248,resetsAt:"2026-11-26T16:49:55Z",primary:true},{label:"Claude/GPT weekly",percent:0,resetsAt:""}],
+  limits:[{label:"Gemini (5-hour)",title:"Gemini",percent:0.0248,resetsAt:"2026-11-26T16:49:55Z",primary:true},{label:"Claude/GPT weekly",percent:0,resetsAt:""}],
   quotaPools:[{name:"Gemini",used:0.0248,resetsAt:"2026-11-26T16:49:55Z",models:["gemini-3-flash","<img src=x>","gemini-4-hydrogen-sonar"]},{name:"Claude (in Antigravity)",used:0,resetsAt:"2026-11-26T17:00:00Z",models:["claude-opus-5-5-high"]}],
   todayTokensByModel:{"gemini-4-neon-high":286318,"bad model!":5,"zero":0}}), "gemini", now);
 assert.strictEqual(gem.provider.weekly, null);
-assert.strictEqual(gem.provider.headline.label, "Gemini (5-hour)");
+assert.strictEqual(gem.provider.headline.rawLabel, "Gemini (5-hour)");
 assert.strictEqual(M.percent(gem.provider.headline.used), "2%");
 assert.strictEqual(M.windowName(gem.provider.headline), "5-hour");
 assert.strictEqual(M.behindPace(gem.provider.weekly, now), false);
@@ -42,4 +42,9 @@ assert.deepStrictEqual(gem.provider.todayModels, [{model:"gemini-4-neon-high",to
 // Claude keeps weekly as headline
 assert.strictEqual(c.provider.headline, c.provider.weekly);
 assert.strictEqual(M.windowName(c.provider.headline), "weekly");
+assert.deepStrictEqual(gem.provider.warnings, []);
+// Contract warnings
+assert.deepStrictEqual(g.provider.warnings, ["Google reported no Gemini pool"]);
+assert.deepStrictEqual(l.provider.warnings, ["limits array is empty", "no headline limit for the bar", "Google reported no Gemini pool", "sign-in: Start `agy` to refresh it."]);
+assert.deepStrictEqual(c.provider.warnings, []);
 console.log("gemini + per-model checks passed");
