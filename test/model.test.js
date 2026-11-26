@@ -82,10 +82,10 @@ test("readable model names", () => {
 });
 
 test("checks: failures for a lapsed sign-in", () => {
-  const l = M.parseProvider(JSON.stringify({ usageStatusText: "Limits paused", authHelpText: "Start `agy` to refresh it.", limits: [] }), "gemini", now, null);
-  assert.strictEqual(l.provider.status, "Limits paused · Start `agy` to refresh it.");
+  const l = M.parseProvider(JSON.stringify({ usageStatusText: "Limits paused", authHelpText: "The Antigravity access token `agy` keeps has lapsed. Start `agy` to refresh it.", limits: [] }), "gemini", now, null);
+  assert.strictEqual(l.provider.status, "Limits paused · The Antigravity access token `agy` keeps has lapsed. Start `agy` to refresh it.");
   assert.deepStrictEqual(failing(l.provider), ["Has a limit for the bar", "Google reports a Gemini pool", "Signed in"]);
-  assert.ok(l.provider.warnings.includes("Signed in: Start `agy` to refresh it."));
+  assert.ok(l.provider.warnings.includes("Signed in: The Antigravity access token `agy` keeps has lapsed. Start `agy` to refresh it."));
 });
 
 test("checks: new fields and new models show as changed, not failed", () => {
@@ -107,6 +107,12 @@ test("checks: new fields and new models show as changed, not failed", () => {
 test("baselineOf captures what the checks compare against", () => {
   const out = JSON.stringify({ limits: [], quotaPools: [{ family: "gemini", models: ["gemini-3-flash"] }], googleFields: { quota: ["buckets"] } });
   assert.deepStrictEqual(M.baselineOf(out, "gemini"), { fields: ["googleFields", "limits", "quotaPools"], models: ["gemini-3-flash"], googleFields: { quota: ["buckets"] } });
+});
+
+test("a rate-limit notice is not a sign-in failure", () => {
+  const r = M.parseProvider(JSON.stringify({ authHelpText: "Anthropic's usage endpoint is rate limiting checks right now (retry after 0s).",
+    limits: [{ label: "Weekly (7-day)", percent: 0.05, resetsAt: "2026-11-27T00:00:00Z" }] }), "claude", now, null);
+  assert.deepStrictEqual(failing(r.provider), ["Provider answered normally"]);
 });
 
 console.log(`model tests: ${count} passed`);

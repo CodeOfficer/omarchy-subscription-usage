@@ -330,7 +330,11 @@ function recordChecks(raw, provider, providerId, baseline) {
   var timed = provider.limits.filter(function(l) { return l.used > 0 && !started(l) }).map(function(l) { return l.label })
   checks.push(check("Used windows have reset times", timed.length === 0, timed.join(", ")))
   checks.push(check("Data is fresh", raw.limitsStale !== true, "the last good answer is being reused"))
-  checks.push(check("Signed in", !raw.authHelpText, String(raw.authHelpText || "").substring(0, 160)))
+  // Collectors put every notice in authHelpText; only some are about the sign-in.
+  var notice = String(raw.authHelpText || "").substring(0, 160)
+  var aboutSignIn = /sign|log ?in|auth|token|expired|lapsed/i.test(notice) && !/rate limit/i.test(notice)
+  checks.push(check("Signed in", !aboutSignIn, notice))
+  checks.push(check("Provider answered normally", !notice || aboutSignIn, notice))
 
   var fields = changeCheck("Record fields unchanged", Object.keys(raw).slice(0, 64).sort(), base.fields)
   if (fields) checks.push(fields)
