@@ -514,7 +514,7 @@ Panel {
       width: parent.width
       // Two facts side by side: how much of the period has gone, how much
       // is used. Red when use runs ahead of time by more than the tolerance.
-      label: Model.timeGoneText(card.pace, root.nowMs)
+      label: Model.periodText(card.pace, root.nowMs)
       labelColor: card.behind ? root.urgent : root.dim
       value: Model.percent(card.pace ? card.pace.used : 0) + " used"
       valueColor: card.behind ? root.urgent : root.dim

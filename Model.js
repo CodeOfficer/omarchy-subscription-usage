@@ -1,6 +1,8 @@
 .pragma library
 
-var WEEK_MS = 7 * 24 * 60 * 60 * 1000
+var HOUR_MS = 60 * 60 * 1000
+var DAY_MS = 24 * HOUR_MS
+var WEEK_MS = 7 * DAY_MS
 
 // How far use can run ahead of the time gone before it turns red. Without
 // it, a week that starts with your first prompt (Codex) would be red at
@@ -653,13 +655,20 @@ function timeGone(limit, nowMs) {
   return started(limit) ? 1 - expectedRemaining(limit, nowMs) : 0
 }
 
-// "96% of the week gone"; red in the panel when use runs further ahead of
-// it than the tolerance.
-function timeGoneText(limit, nowMs) {
+// Where you are in the period, counted the way people count it: "Day 7 of
+// 7" for a week, "Day 28 of 31" for a billing month, "Hour 3 of 24" for a
+// day. Shown beside the percent used; red when use runs ahead of time.
+function periodText(limit, nowMs) {
   if (!limit) return ""
-  var word = periodWord(limit)
-  if (!started(limit)) return word.charAt(0).toUpperCase() + word.substring(1) + " not started"
-  return percent(timeGone(limit, nowMs)) + " of the " + word + " gone"
+  if (!started(limit)) {
+    var word = periodWord(limit)
+    return word.charAt(0).toUpperCase() + word.substring(1) + " not started"
+  }
+  var length = limit.windowMs > 0 ? limit.windowMs : WEEK_MS
+  var unit = length >= 2 * DAY_MS ? DAY_MS : HOUR_MS
+  var total = Math.max(1, Math.round(length / unit))
+  var elapsed = clamp(length - (limit.resetMs - nowMs), 0, length)
+  return (unit === DAY_MS ? "Day " : "Hour ") + Math.min(total, Math.floor(elapsed / unit) + 1) + " of " + total
 }
 
 // ---- Text ---------------------------------------------------------------
@@ -776,7 +785,7 @@ var exportsObject = {
   paceDifference: paceDifference,
   periodWord: periodWord,
   timeGone: timeGone,
-  timeGoneText: timeGoneText,
+  periodText: periodText,
   percent: percent,
   countdown: countdown,
   started: started,

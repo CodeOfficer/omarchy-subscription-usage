@@ -75,7 +75,7 @@ Change these in **Setup › Plugins**, or from a terminal:
 | `showClaude`, `showCodex`, `showGemini` | `true` | Show or hide a provider. A hidden provider is never queried. |
 | `showSuno` | `false` | Show Suno. Then choose **Sign in to Suno** in the panel. |
 | `barDetail` | `Percent` | `Percent and reset` adds the time until reset to the bar. |
-| `paceTolerancePercent` | `5` | How many points use can run ahead of the time gone before a provider turns red. |
+| `paceTolerancePercent` | `5` | How many points use can run ahead of the share of the week (or month) gone before a provider turns red. |
 | `refreshIntervalSec` | `300` | How often to refresh (60–3600). |
 
 ```bash
@@ -89,8 +89,9 @@ omarchy bar set codeofficer.subscription-usage barDetail "Percent and reset"
 - In the panel: `←` `→` or `1` `2` `3` switch views, `↑` `↓` scroll, `R` or Enter refreshes, `D` jumps
   to Debug and back, Escape closes.
 - A provider turns red when its weekly use runs more than the tolerance ahead of the week. For
-  example, with 70% of the week gone, 76% used turns red; 58% does not. The panel shows both
-  numbers side by side ("70% of the week gone · 76% used") and marks the time gone on the bar.
+  example, five days into a seven-day week (71% of it gone), 77% used turns red; 58% does not.
+  The panel shows where you are in the period beside the use ("Day 5 of 7 · 77% used", or "Day 28
+  of 31" for Suno's month) and marks that point on the bar.
 
 ## Checking it yourself
 

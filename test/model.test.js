@@ -17,7 +17,7 @@ test("window without a reset time reads as not started", () => {
   const g = M.parseProvider(JSON.stringify({ limits: [{ label: "Weekly (7-day)", percent: 0, resetsAt: "" }] }), "codex", now, null);
   assert.strictEqual(M.started(g.provider.weekly), false);
   assert.strictEqual(M.resetText(g.provider.weekly, now), "window not started");
-  assert.strictEqual(M.timeGoneText(g.provider.weekly, now), "Week not started");
+  assert.strictEqual(M.periodText(g.provider.weekly, now), "Week not started");
   assert.strictEqual(M.timeGone(g.provider.weekly, now), 0);
   assert.strictEqual(M.behindPace(g.provider.weekly, now), false);
 });
@@ -26,7 +26,7 @@ test("Claude keeps the weekly window as its headline", () => {
   const c = M.parseProvider(JSON.stringify({ limits: [{ label: "Weekly (7-day)", percent: 0.5, resetsAt: "2026-11-29T12:00:00Z" }] }), "claude", now, null);
   assert.strictEqual(c.provider.headline, c.provider.weekly);
   assert.strictEqual(M.headlineText(c.provider.headline, now), "50% used · resets in 3d 0h");
-  assert.strictEqual(M.timeGoneText(c.provider.weekly, now), "57% of the week gone");
+  assert.strictEqual(M.periodText(c.provider.weekly, now), "Day 5 of 7");
   assert.deepStrictEqual(failing(c.provider), []);
 });
 
@@ -34,7 +34,7 @@ test("pace tolerance: a week that just started is not behind for a little use", 
   const reset = new Date(now + 7 * 24 * HOUR - HOUR).toISOString(); // 1 hour into the week
   const record = (used) => M.parseProvider(JSON.stringify({ limits: [{ label: "Weekly (7-day)", percent: used, resetsAt: reset }] }), "codex", now, null).provider.weekly;
   assert.strictEqual(M.behindPace(record(0.01), now), false);
-  assert.strictEqual(M.timeGoneText(record(0.01), now), "1% of the week gone");
+  assert.strictEqual(M.periodText(record(0.01), now), "Day 1 of 7");
   assert.strictEqual(M.behindPace(record(0.04), now), false);
   assert.strictEqual(M.behindPace(record(0.07), now), true);
 });
@@ -137,7 +137,7 @@ test("Suno: the billing month is the headline and is paced over its own length",
   assert.strictEqual(p.headline.detail, "2,000 of 2,500 credits left");
   assert.strictEqual(M.headlineText(p.headline, now), "20% used · resets in 3d 17h");
   // 3d 17h of 31 days left: an even pace would have used 88%.
-  assert.strictEqual(M.timeGoneText(p.pace, now), "88% of the month gone");
+  assert.strictEqual(M.periodText(p.pace, now), "Day 28 of 31");
   assert.deepStrictEqual(p.planModels, ["v6", "v6-wild"]);
   assert.strictEqual(p.tracksTokens, false);
   assert.deepStrictEqual(failing(p), []);
@@ -219,6 +219,9 @@ test("period words for the time-gone line", () => {
   assert.strictEqual(M.periodWord(limit("Monthly (credits)")), "month");
   assert.strictEqual(M.periodWord(limit("Daily (credits)")), "day");
   assert.strictEqual(M.periodWord(limit("Gemini (5-hour)")), "window");
+  // A one-day period counts hours.
+  const day = M.normalizeLimit({ label: "Daily (credits)", percent: 0.1, resetsAt: "2026-11-27T00:00:00Z", windowStartsAt: "2026-11-26T00:00:00Z" }, now);
+  assert.strictEqual(M.periodText(day, now), "Hour 13 of 24");
 });
 
 console.log(`model tests: ${count} passed`);
