@@ -9,6 +9,7 @@ Item {
   property var settings: ({})
   property var claude: ({ id: "claude", name: "Claude", weekly: null, limits: [], recentDays: [], status: "Loading…" })
   property var codex: ({ id: "codex", name: "Codex", weekly: null, limits: [], recentDays: [], status: "Loading…" })
+  property var gemini: ({ id: "gemini", name: "Gemini", weekly: null, limits: [], recentDays: [], status: "Loading…" })
   property bool refreshing: false
   property string lastError: ""
   property date lastUpdated: new Date(0)
@@ -17,6 +18,8 @@ Item {
   property string _claudeError: ""
   property string _codexOutput: ""
   property string _codexError: ""
+  property string _geminiOutput: ""
+  property string _geminiError: ""
 
   readonly property int refreshIntervalSec: intSetting("refreshIntervalSec", 300, 60, 3600)
 
@@ -37,18 +40,24 @@ Item {
   }
 
   function refresh() {
-    if (refreshing || claudeProcess.running || codexProcess.running) return
+    if (refreshing || claudeProcess.running || codexProcess.running || geminiProcess.running) return
     refreshing = true
     lastError = ""
-    _pending = 2
+    _pending = 3
     _claudeOutput = ""
     _claudeError = ""
     _codexOutput = ""
     _codexError = ""
+    _geminiOutput = ""
+    _geminiError = ""
     claudeProcess.command = ["omarchy-agent-usage-claude", "--limits-only"]
     codexProcess.command = ["omarchy-agent-usage-codex", "--limits-only"]
+    // Gemini usage comes from Google Antigravity's plan limits, read with the
+    // sign-in the `agy` CLI keeps.
+    geminiProcess.command = ["omarchy-agent-usage-agy", "--limits-only"]
     claudeProcess.running = true
     codexProcess.running = true
+    geminiProcess.running = true
   }
 
   function finishOne() {
@@ -57,6 +66,23 @@ Item {
       refreshing = false
       lastUpdated = new Date()
     }
+  }
+
+  // Turns one collector run into the provider record the panel draws. A
+  // collector that exits cleanly but has no limits to show (a lapsed sign-in)
+  // keeps its help text as the status, so the panel can say what to do.
+  function collected(current, providerId, name, exitCode, stdout, stderr) {
+    if (exitCode !== 0) {
+      var failure = conciseError(stderr || stdout, "Could not load " + name + " usage")
+      lastError = failure
+      return Object.assign({}, current, { status: failure })
+    }
+    var parsed = Model.parseProvider(stdout, providerId, Date.now())
+    if (!parsed.ok) {
+      lastError = parsed.error
+      return Object.assign({}, current, { status: parsed.error })
+    }
+    return Object.assign({}, parsed.provider, { id: providerId, name: name })
   }
 
   Timer {
@@ -82,19 +108,9 @@ Item {
       onStreamFinished: root._claudeError = text
     }
     onExited: function(exitCode) {
-      var stdout = String(claudeStdout.text || root._claudeOutput || "")
-      var stderr = String(claudeStderr.text || root._claudeError || "")
-      if (exitCode !== 0) {
-        root.claude = Object.assign({}, root.claude, { status: root.conciseError(stderr || stdout, "Could not load Claude usage") })
-        root.lastError = root.claude.status
-      } else {
-        var parsed = Model.parseProvider(stdout, "claude", Date.now())
-        if (parsed.ok) root.claude = parsed.provider
-        else {
-          root.claude = Object.assign({}, root.claude, { status: parsed.error })
-          root.lastError = parsed.error
-        }
-      }
+      root.claude = root.collected(root.claude, "claude", "Claude", exitCode,
+        String(claudeStdout.text || root._claudeOutput || ""),
+        String(claudeStderr.text || root._claudeError || ""))
       root.finishOne()
     }
   }
@@ -114,19 +130,31 @@ Item {
       onStreamFinished: root._codexError = text
     }
     onExited: function(exitCode) {
-      var stdout = String(codexStdout.text || root._codexOutput || "")
-      var stderr = String(codexStderr.text || root._codexError || "")
-      if (exitCode !== 0) {
-        root.codex = Object.assign({}, root.codex, { status: root.conciseError(stderr || stdout, "Could not load Codex usage") })
-        root.lastError = root.codex.status
-      } else {
-        var parsed = Model.parseProvider(stdout, "codex", Date.now())
-        if (parsed.ok) root.codex = parsed.provider
-        else {
-          root.codex = Object.assign({}, root.codex, { status: parsed.error })
-          root.lastError = parsed.error
-        }
-      }
+      root.codex = root.collected(root.codex, "codex", "Codex", exitCode,
+        String(codexStdout.text || root._codexOutput || ""),
+        String(codexStderr.text || root._codexError || ""))
+      root.finishOne()
+    }
+  }
+
+  Process {
+    id: geminiProcess
+    running: false
+    command: []
+    stdout: StdioCollector {
+      id: geminiStdout
+      waitForEnd: true
+      onStreamFinished: root._geminiOutput = text
+    }
+    stderr: StdioCollector {
+      id: geminiStderr
+      waitForEnd: true
+      onStreamFinished: root._geminiError = text
+    }
+    onExited: function(exitCode) {
+      root.gemini = root.collected(root.gemini, "gemini", "Gemini", exitCode,
+        String(geminiStdout.text || root._geminiOutput || ""),
+        String(geminiStderr.text || root._geminiError || ""))
       root.finishOne()
     }
   }

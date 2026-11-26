@@ -56,7 +56,8 @@ function parseProvider(stdout, providerId, nowMs) {
         id: String(providerId || raw.id || ""),
         name: String(raw.name || providerId || ""),
         plan: String(raw.plan || ""),
-        status: String(raw.usageStatusText || ""),
+        status: [String(raw.usageStatusText || ""), String(raw.authHelpText || "")]
+          .filter(function(part) { return part !== "" }).join(" · "),
         weekly: weekly,
         limits: normalized,
         recentDays: Array.isArray(raw.recentDays) ? raw.recentDays : [],
@@ -98,8 +99,30 @@ function countdown(resetMs, nowMs) {
   return mins + "m"
 }
 
+// A window Google (or anyone) reports without a reset time hasn't started:
+// nothing has counted against it yet, so there is no clock to pace against.
+function started(limit) {
+  return !!limit && limit.resetMs > 0
+}
+
+function resetText(limit, nowMs) {
+  if (!limit) return ""
+  return started(limit) ? "resets in " + countdown(limit.resetMs, nowMs) : "window not started"
+}
+
+function shortResetText(limit, nowMs) {
+  if (!limit) return ""
+  return started(limit) ? countdown(limit.resetMs, nowMs) : "not started"
+}
+
+function expectedText(weekly, nowMs) {
+  if (!started(weekly)) return "Expected —"
+  return "Expected " + percent(1 - expectedRemaining(weekly, nowMs)) + " used"
+}
+
 function paceText(weekly, nowMs) {
   if (!weekly) return "No weekly limit"
+  if (!started(weekly)) return "Window not started"
   var points = Math.round(Math.abs(paceDifference(weekly, nowMs)) * 100)
   if (points === 0) return "On pace"
   return points + "% " + (behindPace(weekly, nowMs) ? "behind pace" : "ahead of pace")
@@ -149,6 +172,10 @@ var exportsObject = {
   percent: percent,
   countdown: countdown,
   paceText: paceText,
+  started: started,
+  resetText: resetText,
+  shortResetText: shortResetText,
+  expectedText: expectedText,
   dayTokens: dayTokens,
   recentTotal: recentTotal,
   recentPeak: recentPeak,

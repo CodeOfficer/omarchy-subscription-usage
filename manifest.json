@@ -1,11 +1,11 @@
 {
   "schemaVersion": 1,
-  "id": "robzolkos.agent-usage",
+  "id": "codeofficer.agent-usage",
   "name": "Agent Usage",
-  "version": "0.1.0",
-  "author": "Rob Zolkos",
+  "version": "0.2.0",
+  "author": "CodeOfficer (fork of Rob Zolkos)",
   "license": "MIT",
-  "description": "Weekly Claude and Codex usage, reset countdowns, and prorated pace in the Omarchy bar.",
+  "description": "Weekly Claude, Codex and Gemini usage in the Omarchy bar, with reset countdowns and prorated pace in the panel.",
   "kinds": [
     "bar-widget"
   ],
@@ -14,12 +14,13 @@
   },
   "barWidget": {
     "displayName": "Agent Usage",
-    "description": "Claude and Codex weekly usage and reset countdowns at a glance.",
+    "description": "Claude, Codex and Gemini weekly usage at a glance.",
     "category": "AI",
     "aliases": [
       "agent-usage",
       "claude-usage",
-      "codex-usage"
+      "codex-usage",
+      "gemini-usage"
     ],
     "allowMultiple": false,
     "defaultSection": "right",

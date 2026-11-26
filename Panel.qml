@@ -9,8 +9,8 @@ import "Model.js" as Model
 
 Panel {
   id: root
-  moduleName: "robzolkos.agent-usage"
-  ipcTarget: "robzolkos.agent-usage"
+  moduleName: "codeofficer.agent-usage"
+  ipcTarget: "codeofficer.agent-usage"
   manageIpc: false
 
   property double nowMs: Date.now()
@@ -20,6 +20,7 @@ Panel {
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
   readonly property bool alarming: Model.behindPace(service.claude.weekly, nowMs)
     || Model.behindPace(service.codex.weekly, nowMs)
+    || Model.behindPace(service.gemini.weekly, nowMs)
 
   implicitWidth: usageButton.implicitWidth
   implicitHeight: usageButton.implicitHeight
@@ -59,6 +60,7 @@ Panel {
         refreshing: service.refreshing,
         claude: root.providerStatus(service.claude),
         codex: root.providerStatus(service.codex),
+        gemini: root.providerStatus(service.gemini),
         error: service.lastError
       })
     }
@@ -68,7 +70,7 @@ Panel {
     var weekly = provider ? provider.weekly : null
     return {
       remaining: weekly ? weekly.remaining : null,
-      resetsAt: weekly ? new Date(weekly.resetMs).toISOString() : "",
+      resetsAt: weekly && Model.started(weekly) ? new Date(weekly.resetMs).toISOString() : "",
       behindPace: Model.behindPace(weekly, nowMs),
       status: provider ? provider.status : ""
     }
@@ -81,7 +83,7 @@ Panel {
     labelVisible: false
     hasVisualContent: true
     fixedWidth: vertical ? -1 : barContent.implicitWidth + Style.space(16)
-    tooltipText: "Weekly allowance used · click for details"
+    tooltipText: "Weekly allowance used · click for reset times and details"
     active: root.alarming
     onPressed: function(buttonCode) {
       if (buttonCode === Qt.RightButton || buttonCode === Qt.MiddleButton) root.refresh()
@@ -110,6 +112,20 @@ Panel {
       ProviderChip {
         provider: service.codex
         iconSource: Qt.resolvedUrl("codex.svg")
+        tintIcon: true
+      }
+
+      Rectangle {
+        width: 1
+        height: Style.space(13)
+        anchors.verticalCenter: parent.verticalCenter
+        color: Qt.darker(root.barForeground, 1.55)
+        opacity: 0.65
+      }
+
+      ProviderChip {
+        provider: service.gemini
+        iconSource: Qt.resolvedUrl("gemini.svg")
         tintIcon: true
       }
     }
@@ -173,6 +189,15 @@ Panel {
           width: parent.width
           provider: service.codex
           iconSource: Qt.resolvedUrl("codex.svg")
+          tintIcon: true
+        }
+
+        PanelSeparator { width: parent.width; foreground: root.foreground }
+
+        ProviderCard {
+          width: parent.width
+          provider: service.gemini
+          iconSource: Qt.resolvedUrl("gemini.svg")
           tintIcon: true
         }
 
@@ -246,7 +271,7 @@ Panel {
 
     Text {
       anchors.verticalCenter: parent.verticalCenter
-      text: chip.provider.id === "claude" ? "Claude" : "Codex"
+      text: chip.provider.name
       color: chip.behind ? root.urgent : root.barForeground
       font.family: root.fontFamily
       font.pixelSize: Style.font.caption
@@ -255,9 +280,8 @@ Panel {
 
     Text {
       anchors.verticalCenter: parent.verticalCenter
-      text: chip.weekly
-        ? Model.percent(chip.weekly.used) + " · " + Model.countdown(chip.weekly.resetMs, root.nowMs)
-        : "—"
+      // Percent only, to keep the bar narrow; reset times are in the panel.
+      text: chip.weekly ? Model.percent(chip.weekly.used) : "—"
       color: chip.behind ? root.urgent : root.barForeground
       font.family: root.fontFamily
       font.pixelSize: Style.font.caption
@@ -290,7 +314,7 @@ Panel {
         spacing: Style.space(2)
 
         Text {
-          text: card.provider.id === "claude" ? "Claude" : "Codex"
+          text: card.provider.name
           color: card.behind ? root.urgent : root.foreground
           font.family: root.fontFamily
           font.pixelSize: Style.font.title
@@ -299,7 +323,7 @@ Panel {
 
         Text {
           text: card.weekly
-            ? Model.percent(card.weekly.used) + " used · resets in " + Model.countdown(card.weekly.resetMs, root.nowMs)
+            ? Model.percent(card.weekly.used) + " used · " + Model.resetText(card.weekly, root.nowMs)
             : (card.provider.status || "Weekly limit unavailable")
           color: card.behind ? root.urgent : root.dim
           font.family: root.fontFamily
@@ -336,7 +360,7 @@ Panel {
       }
 
       Text {
-        text: "Expected " + Model.percent(1 - Model.expectedRemaining(card.weekly, root.nowMs)) + " used"
+        text: Model.expectedText(card.weekly, root.nowMs)
         color: root.dim
         font.family: root.fontFamily
         font.pixelSize: Style.font.caption
@@ -424,7 +448,7 @@ Panel {
         }
 
         Text {
-          text: Model.percent(modelData.used) + " used · " + Model.countdown(modelData.resetMs, root.nowMs)
+          text: Model.percent(modelData.used) + " used · " + Model.shortResetText(modelData, root.nowMs)
           color: root.dim
           font.family: root.fontFamily
           font.pixelSize: Style.font.caption
