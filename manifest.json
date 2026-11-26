@@ -92,7 +92,7 @@
         "max": 25,
         "step": 1,
         "defaultValue": 5,
-        "description": "How far a window can drift from its prorated share before it turns red: over it for Claude, Codex and Gemini, under it (credits left to expire) for Suno."
+        "description": "How far over its prorated share a weekly or monthly window can run before it turns red."
       }
     ]
   }

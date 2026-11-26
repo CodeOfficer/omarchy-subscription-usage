@@ -496,7 +496,7 @@ Panel {
     InfoRow {
       visible: !!card.pace
       width: parent.width
-      label: Model.paceText(card.pace, root.nowMs, root.paceTolerance, card.provider.paceMode)
+      label: Model.paceText(card.pace, root.nowMs, root.paceTolerance)
       labelColor: card.behind ? root.urgent : root.dim
       value: Model.expectedText(card.pace, root.nowMs)
     }

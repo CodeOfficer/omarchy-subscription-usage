@@ -133,7 +133,6 @@ test("Suno: the billing month is the headline and is paced over its own length",
   const p = M.parseProvider(JSON.stringify(sunoRecord()), "suno", now, null).provider;
   assert.strictEqual(p.weekly, null);
   assert.strictEqual(p.pace, p.headline);
-  assert.strictEqual(p.paceMode, "under");
   assert.strictEqual(p.headline.windowMs, 31 * 24 * HOUR);
   assert.strictEqual(p.headline.detail, "2,000 of 2,500 credits left");
   assert.strictEqual(M.headlineText(p.headline, now), "20% used · resets in 3d 17h");
@@ -144,17 +143,15 @@ test("Suno: the billing month is the headline and is paced over its own length",
   assert.deepStrictEqual(failing(p), []);
 });
 
-test("Suno: unused credits near the reset raise the alarm; heavy use does not", () => {
-  const idle = M.parseProvider(JSON.stringify(sunoRecord()), "suno", now, null).provider;
-  assert.strictEqual(M.paceAlarm(idle, now, 0.05), true);
-  assert.strictEqual(M.paceText(idle.pace, now, 0.05, "under"), "68% unused vs pace");
+test("Suno: paced like the others; only running ahead of the month turns red", () => {
+  const light = M.parseProvider(JSON.stringify(sunoRecord()), "suno", now, null).provider;
+  assert.strictEqual(M.paceAlarm(light, now, 0.05), false);
+  assert.strictEqual(M.paceText(light.pace, now, 0.05), "68% ahead of pace");
   const busy = sunoRecord();
   busy.limits[0].percent = 0.95;
   const b = M.parseProvider(JSON.stringify(busy), "suno", now, null).provider;
-  assert.strictEqual(M.paceAlarm(b, now, 0.05), false);
-  assert.strictEqual(M.paceText(b.pace, now, 0.05, "under"), "7% ahead of pace");
-  // The same record paced as a cap (Claude-style) would be the other way round.
-  assert.strictEqual(M.behindPace(b.pace, now, 0.05), true);
+  assert.strictEqual(M.paceAlarm(b, now, 0.05), true);
+  assert.strictEqual(M.paceText(b.pace, now, 0.05), "7% behind pace");
 });
 
 test("Suno: a lapsed sign-in asks for Sign in and fails the sign-in check", () => {
@@ -188,7 +185,6 @@ test("provider table: commands, placeholders, defaults", () => {
   // Claude/Codex: a week is paced as a cap.
   const c = M.parseProvider(JSON.stringify({ limits: [{ label: "Weekly (7-day)", percent: 0.9, resetsAt: "2026-11-29T12:00:00Z" }] }), "claude", now, null).provider;
   assert.strictEqual(c.pace, c.weekly);
-  assert.strictEqual(c.paceMode, "over");
   assert.strictEqual(M.paceAlarm(c, now, 0.05), true);
 });
 

@@ -35,8 +35,8 @@ work on any Omarchy machine. No personal paths or accounts in committed files; k
   `studio-api.suno.ai` host answers 503). The JWT lasts 60 minutes; Suno's sign-in is Clerk at
   `auth.suno.com`: `GET /v1/client` (cookie `__client`, header `Origin: https://suno.com`) gives
   `last_active_session_id`, `POST /v1/client/sessions/{sid}/tokens` gives `{jwt}`. `__client` lasts
-  about a year and lives only in the plugin's browser profile. Monthly credits expire at
-  `period_end`, hence `pace: "under"`. The answer also has account/payment ids; never print them.
+  about a year and lives only in the plugin's browser profile. The month runs to `period_end`
+  (paced like a week, via `windowStartsAt`). The answer also has account/payment ids; never print them.
 - **Not available anywhere**: ChatGPT chat usage, Gemini app (web) usage.
 - These are internal vendor services, not public APIs. Treat missing data as unknown, never 0%.
 
@@ -61,7 +61,7 @@ node test/integration.test.js --live           # collectors + the running widget
 ## Adding a provider
 
 1. A row in `Model.PROVIDERS` (id, name, setting, defaultOn, `command` or `bin`, icon, tint,
-   `pace`, optional `signIn: { url }`).
+   optional `signIn: { url }`).
 2. A collector printing the shared record (`limits[]` with `label`/`percent`/`resetsAt`, optional
    `windowStartsAt`, `primary`, `detail`; `plan`, `tierLabel`, `usageStatusText`, `authHelpText`,
    `signInRequired`). Same keys every run, signed in or not. Exit 0 with help text when signed out.

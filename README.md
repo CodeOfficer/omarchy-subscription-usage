@@ -34,9 +34,8 @@ Click it for detail in three views, switched with `←` `→` or `1` `2` `3`:
 Google reports only a rolling 5-hour window for Gemini models, so Gemini has no weekly pace. Claude
 and GPT models used inside Antigravity have their own allowances, listed on the Models view.
 
-Suno's monthly credits expire at the reset, so Suno's pace works the other way round: it turns red
-when credits are going unused, not when you're using them fast. The panel also lists visual
-credits and downloads.
+Suno is paced like the others, over its billing month: the bar shows the share of the month's
+credits used. The panel also lists visual credits and downloads.
 
 ## Requirements
 
@@ -74,7 +73,7 @@ Change these in **Setup › Plugins**, or from a terminal:
 | `showClaude`, `showCodex`, `showGemini` | `true` | Show or hide a provider. A hidden provider is never queried. |
 | `showSuno` | `false` | Show Suno. Then choose **Sign in to Suno** in the panel. |
 | `barDetail` | `Percent` | `Percent and reset` adds the time until reset to the bar. |
-| `paceTolerancePercent` | `5` | How many points a window can drift from its prorated share before it turns red (over it; for Suno, under it). |
+| `paceTolerancePercent` | `5` | How many points over its prorated share a window can run before it turns red. |
 | `refreshIntervalSec` | `300` | How often to refresh (60–3600). |
 
 ```bash

@@ -11,15 +11,13 @@ var PACE_TOLERANCE = 0.05
 // collector that prints the shared record shape, an icon, and a manifest
 // setting (`setting`, default `defaultOn`).
 //   command  an Omarchy collector on PATH;  bin  one of this plugin's bin/ scripts
-//   pace     "over": warn when use runs ahead of the window (a cap you can hit)
-//            "under": warn when credits go unused (they expire at the reset)
 //   signIn   { url }: no CLI keeps a sign-in, so the panel offers a Sign in
 //            button that opens `url` in a browser profile of the plugin's own
 var PROVIDERS = [
-  { id: "claude", name: "Claude", setting: "showClaude", defaultOn: true, command: ["omarchy-agent-usage-claude", "--limits-only"], icon: "claude.svg", tint: false, pace: "over" },
-  { id: "codex", name: "Codex", setting: "showCodex", defaultOn: true, command: ["omarchy-agent-usage-codex", "--limits-only"], icon: "codex.svg", tint: true, pace: "over" },
-  { id: "gemini", name: "Gemini", setting: "showGemini", defaultOn: true, bin: "gemini-usage", icon: "gemini.svg", tint: false, pace: "over" },
-  { id: "suno", name: "Suno", setting: "showSuno", defaultOn: false, bin: "suno-usage", icon: "suno.svg", tint: true, pace: "under", signIn: { url: "https://suno.com" } }
+  { id: "claude", name: "Claude", setting: "showClaude", defaultOn: true, command: ["omarchy-agent-usage-claude", "--limits-only"], icon: "claude.svg", tint: false },
+  { id: "codex", name: "Codex", setting: "showCodex", defaultOn: true, command: ["omarchy-agent-usage-codex", "--limits-only"], icon: "codex.svg", tint: true },
+  { id: "gemini", name: "Gemini", setting: "showGemini", defaultOn: true, bin: "gemini-usage", icon: "gemini.svg", tint: false },
+  { id: "suno", name: "Suno", setting: "showSuno", defaultOn: false, bin: "suno-usage", icon: "suno.svg", tint: true, signIn: { url: "https://suno.com" } }
 ]
 
 function providerConfig(id) {
@@ -456,7 +454,6 @@ function parseProvider(stdout, providerId, nowMs, baseline) {
       // The window pace is measured against: the week, else the headline
       // when it says how long it runs (Suno's billing month).
       pace: weekly || (headline && headline.windowMs > 0 ? headline : null),
-      paceMode: config && config.pace === "under" ? "under" : "over",
       // The collector found no usable sign-in; the panel offers Sign in.
       signInNeeded: raw.signInRequired === true,
       limits: normalized,
@@ -517,34 +514,17 @@ function behindPace(weekly, nowMs, tolerance) {
   return paceDifference(weekly, nowMs) < -allowed
 }
 
-function allowedDrift(tolerance) {
-  return tolerance === undefined ? PACE_TOLERANCE : clamp(number(tolerance, PACE_TOLERANCE), 0, 1)
-}
-
-// Credits that expire at the reset: unused share running more than the
-// tolerance over what an even pace would have left.
-function wastingPace(limit, nowMs, tolerance) {
-  if (!limit || !started(limit)) return false
-  return paceDifference(limit, nowMs) > allowedDrift(tolerance)
-}
-
-// Whether a provider should turn red: over pace for a cap you can hit,
-// under pace for credits that expire.
+// Whether a provider should turn red: its paced window is running ahead.
 function paceAlarm(provider, nowMs, tolerance) {
-  if (!provider || !provider.pace) return false
-  return provider.paceMode === "under" ? wastingPace(provider.pace, nowMs, tolerance) : behindPace(provider.pace, nowMs, tolerance)
+  return !!provider && behindPace(provider.pace, nowMs, tolerance)
 }
 
-function paceText(weekly, nowMs, tolerance, mode) {
+function paceText(weekly, nowMs, tolerance) {
   if (!weekly) return "No weekly limit"
   if (!started(weekly)) return "Window not started"
   var difference = paceDifference(weekly, nowMs)
   var points = Math.round(Math.abs(difference) * 100)
   if (points === 0) return "On pace"
-  if (mode === "under") {
-    if (difference < 0) return points + "% ahead of pace"
-    return wastingPace(weekly, nowMs, tolerance) ? points + "% unused vs pace" : "Near pace · " + points + "% unused"
-  }
   if (difference > 0) return points + "% ahead of pace"
   return behindPace(weekly, nowMs, tolerance) ? points + "% behind pace" : "Near pace · " + points + "% over"
 }
@@ -649,7 +629,6 @@ var exportsObject = {
   providerConfig: providerConfig,
   commandOf: commandOf,
   placeholder: placeholder,
-  wastingPace: wastingPace,
   paceAlarm: paceAlarm,
   toArray: toArray,
   findWeekly: findWeekly,
