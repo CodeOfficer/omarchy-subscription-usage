@@ -58,7 +58,7 @@ test("Gemini: the primary 5-hour pool is the headline, with its window name", ()
   const p = gem.provider;
   assert.strictEqual(p.weekly, null);
   assert.strictEqual(p.headline.rawLabel, "Gemini (5-hour)");
-  assert.strictEqual(M.headlineText(p.headline, now), "2% of 5-hour used · resets in 4h 49m");
+  assert.strictEqual(M.headlineText(p.headline, now), "2% used · 5-hour window · resets in 4h 49m");
   assert.strictEqual(p.limits[1].scoped, true);
   assert.deepStrictEqual(p.pools[0].models, ["gemini-3-flash", "gemini-4-hydrogen-sonar"]); // markup dropped
   assert.strictEqual(M.poolText(p.pools[0], now), "2% used · 4h 49m");

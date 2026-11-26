@@ -713,7 +713,9 @@ function windowName(limit) {
 function headlineText(limit, nowMs) {
   if (!limit) return ""
   var window = windowName(limit)
-  return percent(limit.used) + (window && window !== "weekly" && window !== "monthly" ? " of " + window : "") + " used · " + resetText(limit, nowMs)
+  // Same shape for every provider; a window that isn't the plan's week or
+  // month (Gemini's 5 hours) is named after the percent.
+  return percent(limit.used) + " used" + (window && window !== "weekly" && window !== "monthly" ? " · " + window + " window" : "") + " · " + resetText(limit, nowMs)
 }
 
 function dayTokens(day) {
