@@ -13,10 +13,13 @@ var PACE_TOLERANCE = 0.05
 //   command  an Omarchy collector on PATH;  bin  one of this plugin's bin/ scripts
 //   signIn   { url }: no CLI keeps a sign-in, so the panel offers a Sign in
 //            button that opens `url` in a browser profile of the plugin's own
+//   setup    { label, command }: a one-time terminal step the panel offers
+//            while the provider has no live answer and says setupNeeded
 var PROVIDERS = [
   { id: "claude", name: "Claude", setting: "showClaude", defaultOn: true, command: ["omarchy-agent-usage-claude", "--limits-only"], icon: "claude.svg", tint: false },
   { id: "codex", name: "Codex", setting: "showCodex", defaultOn: true, command: ["omarchy-agent-usage-codex", "--limits-only"], icon: "codex.svg", tint: true },
-  { id: "gemini", name: "Gemini", setting: "showGemini", defaultOn: true, bin: "gemini-usage", icon: "gemini.svg", tint: false },
+  { id: "gemini", name: "Gemini", setting: "showGemini", defaultOn: true, bin: "gemini-usage", icon: "gemini.svg", tint: false,
+    setup: { label: "Set up Gemini auto-refresh", command: "omp login antigravity-cli" } },
   { id: "suno", name: "Suno", setting: "showSuno", defaultOn: false, bin: "suno-usage", icon: "suno.svg", tint: true, signIn: { url: "https://suno.com" } }
 ]
 
@@ -115,11 +118,13 @@ var BASELINE = {
       "recentDays",
       "retryAdvised",
       "schemaVersion",
+      "setupNeeded",
       "tierLabel",
       "todayPrompts",
       "todaySessions",
       "todayTokensByModel",
       "todayTotalTokens",
+      "tokenSource",
       "totalPrompts",
       "totalSessions",
       "updatedAt",
@@ -494,7 +499,8 @@ function recordChecks(raw, provider, providerId, baseline) {
   // Collectors put every notice in authHelpText; only some are about the sign-in.
   var notice = String(raw.authHelpText || "").substring(0, 160)
   var signInNotice = aboutSignIn(raw)
-  checks.push(check("Signed in", !signInNotice && raw.signInRequired !== true, notice || "not signed in"))
+  var source = /^[a-z]{1,12}$/.test(String(raw.tokenSource || "")) ? " (" + raw.tokenSource + ")" : ""
+  checks.push(check("Signed in" + source, !signInNotice && raw.signInRequired !== true, notice || "not signed in"))
   checks.push(check("Provider answered normally", !notice || signInNotice, notice))
 
   // Baseline comparisons: only against a live answer.
@@ -573,6 +579,10 @@ function parseProvider(stdout, providerId, nowMs, baseline) {
       pace: weekly || (headline && headline.windowMs > 0 ? headline : null),
       // The collector found no usable sign-in; the panel offers Sign in.
       signInNeeded: raw.signInRequired === true,
+      // A one-time setup step would keep this provider live (Gemini: omp).
+      setupNeeded: raw.setupNeeded === true,
+      // Which sign-in answered, when the collector can use more than one.
+      tokenSource: /^[a-z]{1,12}$/.test(String(raw.tokenSource || "")) ? String(raw.tokenSource) : "",
       limits: normalized,
       pools: parsePools(raw.quotaPools, nowMs),
       planModels: planModels,

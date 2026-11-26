@@ -14,6 +14,13 @@ panel can show the per-model breakdown.
 
 The sign-in is read with Omarchy's own collector code and never printed or
 stored. Every value from Google is bounded and validated before it is printed.
+
+agy's access token lasts an hour and only a running agy renews it, so Gemini
+would read "Limits paused" an hour after agy closes. When that happens and
+omp is signed in to Antigravity (`omp login antigravity-cli`, once), this
+asks `omp token antigravity-cli` instead: omp renews its own token. omp is
+only called when its sign-in exists, so a bare Omarchy lazy-install shim is
+never triggered.
 """
 
 import importlib.machinery
@@ -23,9 +30,11 @@ import math
 import os
 import re
 import shutil
+import sqlite3
 import subprocess
 import sys
 import time
+from pathlib import Path
 
 sys.dont_write_bytecode = True
 # Omarchy's Antigravity collector, found on PATH like any Omarchy command;
@@ -33,6 +42,9 @@ sys.dont_write_bytecode = True
 COLLECTOR = os.environ.get("AGENT_USAGE_AGY_COLLECTOR") or shutil.which("omarchy-agent-usage-agy") or "omarchy-agent-usage-agy"
 MAX_BUCKETS = 64
 MODEL_ID = re.compile(r"^[A-Za-z0-9._-]{1,80}$")
+GOOGLE_TOKEN = re.compile(r"^ya29\.[A-Za-z0-9._-]{20,4096}$")
+OMP_PROVIDER = "antigravity-cli"
+OMP_SETUP = "To keep Gemini current without agy open, sign omp in once: choose Set up in the panel, or run `omp login antigravity-cli`."
 
 # Families in the order the panel lists them, with the names people know.
 FAMILIES = (
@@ -60,6 +72,41 @@ def load_collector():
   module = importlib.util.module_from_spec(spec)
   loader.exec_module(module)
   return module
+
+
+def omp_database():
+  return Path(os.environ.get("AGENT_USAGE_OMP_DB") or (Path.home() / ".omp" / "agent" / "agent.db"))
+
+
+def omp_signed_in(db=None):
+  """omp keeps an Antigravity sign-in (so omp is installed, not just a shim)."""
+  db = db or omp_database()
+  if not db.is_file():
+    return False
+  try:
+    conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=2)
+    try:
+      row = conn.execute("SELECT 1 FROM auth_credentials WHERE provider = ? AND disabled_cause IS NULL LIMIT 1", (OMP_PROVIDER,)).fetchone()
+    finally:
+      conn.close()
+  except sqlite3.Error:
+    return False
+  return row is not None
+
+
+def omp_token(run=subprocess.run):
+  """A live Google token from omp, which renews its own sign-in; or None."""
+  if not omp_signed_in():
+    return None
+  omp = shutil.which("omp")
+  if not omp:
+    return None
+  try:
+    out = run([omp, "token", OMP_PROVIDER], stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=30, cwd=str(Path.home()))
+  except (OSError, subprocess.SubprocessError):
+    return None
+  token = str(out.stdout or "").strip()
+  return token if out.returncode == 0 and GOOGLE_TOKEN.match(token) else None
 
 
 def family_of(model_id):
@@ -150,19 +197,25 @@ def google_fields(quota, summary):
 def main():
   record = base_record()
   record["name"] = "Gemini"
+  setup = not omp_signed_in()
+  # Same keys every run: which sign-in answered, and whether the omp setup
+  # step would help (the panel offers it while Gemini has no live answer).
+  record.update(tokenSource="", setupNeeded=setup)
   try:
     agy = load_collector()
     now = time.time()
     entries = [e for e in agy.logins() if agy.token_fresh(e, now)]
-    if not entries:
+    token, source = (entries[0]["accessToken"], entries[0].get("source") or "agy") if entries else (omp_token(), "omp")
+    if not token:
       raise LookupError
-    token = entries[0]["accessToken"]
     assist = agy.post("loadCodeAssist", token)
     body = agy.project_body(assist)
     quota = agy.post("retrieveUserQuota", token, body)
     summary = agy.post("retrieveUserQuotaSummary", token, body)
   except LookupError:
     # No live sign-in: keep the base record's own status and help text.
+    if setup and record.get("authHelpText"):
+      record["authHelpText"] = str(record["authHelpText"]) + " " + OMP_SETUP
     print(json.dumps(record))
     return
   except Exception:
@@ -178,7 +231,10 @@ def main():
     # Google reports only a rolling 5-hour window for the Gemini pool.
     limits.append({"label": "Gemini (5-hour)", "title": "Gemini", "percent": gemini["used"], "resetsAt": gemini["resetsAt"], "primary": True})
   limits.extend(summary_limits(summary))
-  record.update(limits=limits, quotaPools=pools, googleFields=google_fields(quota, summary), usageStatusText="", authHelpText="")
+  # A live answer, whichever sign-in gave it: the base record's "paused"
+  # notice and stale flag no longer apply.
+  record.update(limits=limits, quotaPools=pools, googleFields=google_fields(quota, summary), usageStatusText="", authHelpText="",
+                limitsStale=False, limitsFetchedAt=int(now * 1000), tokenSource=source)
   print(json.dumps(record))
 
 

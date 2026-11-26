@@ -20,6 +20,7 @@ work on any Omarchy machine. No personal paths or accounts in committed files; k
 | `bin/browser-signin` | Opens that profile's window for a provider (`browser-signin <id> <url>`) |
 | `test/model.test.js` | Unit tests, no network |
 | `test/suno_usage_test.py` | Unit tests for the Suno collector and cookie reading, no network |
+| `test/gemini_usage_test.py` | Unit tests for the Gemini collector's omp fallback, no network |
 | `test/integration.test.js` | Runs the real collectors on this machine; same checks as Debug view |
 
 ## Where the numbers come from (checked Nov 2026; providers change these)
@@ -30,7 +31,11 @@ work on any Omarchy machine. No personal paths or accounts in committed files; k
   `v1internal:retrieveUserQuota` (per model) and `retrieveUserQuotaSummary`, using Omarchy's
   collector code for the sign-in. On AI Pro, the summary lists only the "Claude and GPT models"
   group; the Gemini pool appears only in the per-model call, and has a **5-hour window only, no
-  weekly**. Gemini 4 Neon is not listed by name there yet.
+  weekly**. Gemini 4 Neon is not listed by name there yet. agy's access token lasts 60 minutes and
+  only a running agy renews it; when it has lapsed, `bin/gemini-usage` uses `omp token
+  antigravity-cli` (omp renews its own; `google-antigravity` is paused in omp ≥ 19, and Omarchy's
+  collector still only knows that name). omp is called only if `~/.omp/agent/agent.db` holds an
+  `antigravity-cli` sign-in: on Omarchy `omp` is a lazy shim that would download ~300 MB.
 - **Suno**: `GET https://suno.com/a/api/billing/info/` with `Authorization: Bearer <JWT>` (the old
   `studio-api.suno.ai` host answers 503). The JWT lasts 60 minutes; Suno's sign-in is Clerk at
   `auth.suno.com`: `GET /v1/client` (cookie `__client`, header `Origin: https://suno.com`) gives
@@ -46,6 +51,7 @@ work on any Omarchy machine. No personal paths or accounts in committed files; k
 # edit in your dev clone, then:
 node test/model.test.js
 python3 -I test/suno_usage_test.py
+python3 -I test/gemini_usage_test.py
 omarchy plugin validate "$PWD"
 git commit && git push                         # the installed copy pulls from origin
 omarchy plugin update codeofficer.subscription-usage --yes
@@ -55,7 +61,7 @@ node test/integration.test.js --live           # collectors + the running widget
 
 - Never edit the installed copy in `~/.config/omarchy/plugins/codeofficer.subscription-usage/`;
   `omarchy plugin update` fast-forwards it and can reset local changes.
-- Drive the running widget: `omarchy-shell codeofficer.subscription-usage open|close|refresh|status|view <1-3>|debug|signin <id>`.
+- Drive the running widget: `omarchy-shell codeofficer.subscription-usage open|close|refresh|status|view <1-3>|debug|signin <id>|setup <id>`.
 - See it: `grim` a screenshot after `open`.
 
 ## Adding a provider

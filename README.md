@@ -43,8 +43,10 @@ credits used. The panel also lists visual credits and downloads.
 - For each provider you show, its CLI signed in to your account:
   - Claude: `claude` (Claude Code)
   - Codex: `codex`
-  - Gemini: `agy` (Antigravity CLI). If Gemini says *Limits paused*, start `agy` once to refresh
-    its sign-in.
+  - Gemini: `agy` (Antigravity CLI). agy's access token lasts an hour and only a running agy
+    renews it, so Gemini says *Limits paused* an hour after agy closes. To keep it current
+    anyway, sign omp in to Antigravity once (the panel offers **Set up Gemini auto-refresh**):
+    `omp login antigravity-cli`. The widget then asks omp, which renews its own sign-in.
 - For Suno: Chromium (or Chrome/Brave) and `openssl`. Suno has no CLI, so the panel's
   **Sign in to Suno** opens a browser window of the widget's own (a separate profile in
   `~/.local/state/subscription-usage/profiles/suno`, never your main browser). Sign in there as

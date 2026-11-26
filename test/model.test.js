@@ -211,6 +211,21 @@ test("Suno charts credits, not tokens", () => {
   assert.strictEqual(M.parseProvider(JSON.stringify(sunoRecord({ recentUnit: "<b>" })), "suno", now, null).provider.recentUnit, "tokens");
 });
 
+test("Gemini: which sign-in answered, and the omp setup hint", () => {
+  const live = { limits: [{ label: "Gemini (5-hour)", percent: 0.03, resetsAt: "2026-11-26T16:00:00Z", primary: true }],
+    quotaPools: [{ family: "gemini", name: "Gemini", used: 0.03, resetsAt: "2026-11-26T16:00:00Z", models: ["gemini-3-flash"] }],
+    tokenSource: "omp", setupNeeded: false };
+  const p = M.parseProvider(JSON.stringify(live), "gemini", now, null).provider;
+  assert.strictEqual(p.tokenSource, "omp");
+  assert.ok(p.checks.some((c) => c.name === "Signed in (omp)" && c.state === "pass"));
+  const lapsed = M.parseProvider(JSON.stringify({ limits: [], limitsStale: true, setupNeeded: true, tokenSource: "<x>",
+    authHelpText: "The Antigravity access token `agy` keeps has lapsed." }), "gemini", now, null).provider;
+  assert.strictEqual(lapsed.setupNeeded, true);
+  assert.strictEqual(lapsed.tokenSource, "");
+  assert.strictEqual(lapsed.live, false);
+  assert.strictEqual(M.providerConfig("gemini").setup.command, "omp login antigravity-cli");
+});
+
 console.log(`model tests: ${count} passed`);
 
 test("pool model text accepts array-like lists from QML", () => {

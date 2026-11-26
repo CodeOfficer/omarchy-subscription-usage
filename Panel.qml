@@ -84,6 +84,7 @@ Panel {
     function view(index: string): string { root.showView(parseInt(index, 10) - 1); return root.viewNames[root.view] }
     function debug(): string { root.showView(root.view === 2 ? 0 : 2); return root.viewNames[root.view] }
     function signin(id: string): string { return service.signIn(id) ? "opened" : "not available" }
+    function setup(id: string): string { return service.setUp(id) ? "opened" : "not available" }
     function status(): string {
       var result = { refreshing: service.refreshing, signingIn: service.signingIn, error: service.lastError }
       root.shown.forEach(function(id) { result[id] = root.providerStatus(service.record(id)) })
@@ -99,6 +100,8 @@ Panel {
       resetsAt: headline && Model.started(headline) ? new Date(headline.resetMs).toISOString() : "",
       behindPace: Model.paceAlarm(provider, nowMs, root.paceTolerance),
       signInNeeded: !!provider && provider.signInNeeded === true,
+      setupNeeded: !!provider && provider.setupNeeded === true,
+      tokenSource: provider ? provider.tokenSource || "" : "",
       status: provider ? provider.status : "",
       problems: provider && Array.isArray(provider.warnings) ? provider.warnings : [],
       run: provider && provider.debug ? provider.debug : null
@@ -524,6 +527,24 @@ Panel {
       wrapMode: Text.WordWrap
       maximumLineCount: 3
       elide: Text.ElideRight
+    }
+
+    // A one-time step that keeps this provider live (Gemini: sign omp in).
+    Text {
+      visible: card.provider && card.provider.live === false && card.provider.setupNeeded === true && service.canSetUp(card.provider.id)
+      textFormat: Text.PlainText
+      text: "→ " + (service.config(card.provider.id) && service.config(card.provider.id).setup ? service.config(card.provider.id).setup.label : "")
+      color: root.foreground
+      font.family: root.fontFamily
+      font.pixelSize: Style.font.body
+      font.bold: true
+      font.underline: true
+
+      MouseArea {
+        anchors.fill: parent
+        cursorShape: Qt.PointingHandCursor
+        onClicked: service.setUp(card.provider.id)
+      }
     }
 
     // No CLI keeps this provider's sign-in: open the plugin's own browser

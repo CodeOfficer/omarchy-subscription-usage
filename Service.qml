@@ -38,6 +38,17 @@ Item {
   function iconOf(id) { var c = config(id); return c ? Qt.resolvedUrl(c.icon) : "" }
   function tinted(id) { var c = config(id); return !!c && c.tint === true }
   function canSignIn(id) { var c = config(id); return !!c && !!c.signIn }
+  function canSetUp(id) { var c = config(id); return !!c && !!c.setup }
+
+  // Runs a provider's one-time setup command (Gemini: `omp login
+  // antigravity-cli`) in Omarchy's floating terminal. It returns at once;
+  // the next refresh (or R in the panel) picks up the result.
+  function setUp(id) {
+    var c = config(id)
+    if (!c || !c.setup) return false
+    Quickshell.execDetached(["omarchy-launch-floating-terminal-with-presentation", c.setup.command])
+    return true
+  }
 
   function setRecord(id, value) {
     var next = Object.assign({}, records)
