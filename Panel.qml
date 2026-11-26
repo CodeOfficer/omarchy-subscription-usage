@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Layouts
+import QtQuick.Controls
 import QtQuick.Effects
 import Quickshell
 import Quickshell.Io
@@ -139,7 +140,9 @@ Panel {
     open: root.opened
     focusTarget: keyCatcher
     contentWidth: panel.fittedContentWidth(Style.space(410))
-    contentHeight: panel.fittedContentHeight(panelContent.implicitHeight, Style.space(600))
+    // Three providers need more room than two; the panel still never grows past
+    // the screen, and scrolls when the content is taller than it.
+    contentHeight: panel.fittedContentHeight(panelContent.implicitHeight, Style.space(960))
 
     PanelKeyCatcher {
       id: keyCatcher
@@ -149,9 +152,20 @@ Panel {
       onActivateRequested: root.refresh()
       onTextKey: function(text) { if (text === "r" || text === "R") root.refresh() }
 
+      Flickable {
+        id: panelFlick
+        anchors.fill: parent
+        contentWidth: width
+        contentHeight: panelContent.implicitHeight
+        clip: true
+        boundsBehavior: Flickable.StopAtBounds
+        flickableDirection: Flickable.VerticalFlick
+        interactive: contentHeight > height
+        ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+
       Column {
         id: panelContent
-        width: parent.width
+        width: panelFlick.width
         spacing: Style.space(12)
 
         RowLayout {
@@ -210,6 +224,7 @@ Panel {
           font.pixelSize: Style.font.bodySmall
           wrapMode: Text.WordWrap
         }
+      }
       }
     }
   }
