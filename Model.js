@@ -32,7 +32,7 @@ function commandOf(config, binDir) {
 
 // What the panel shows before a provider's first answer.
 function placeholder(config) {
-  return { id: config.id, name: config.name, weekly: null, pace: null, headline: null, limits: [], pools: [], recentDays: [], status: "Loading…" }
+  return { id: config.id, name: config.name, weekly: null, pace: null, headline: null, limits: [], pools: [], recentDays: [], live: true, status: "Loading…" }
 }
 
 // What each provider's record looked like when the widget was last checked
@@ -169,6 +169,96 @@ var BASELINE = {
         "displayName",
         "remainingFraction",
         "window"
+      ]
+    }
+  },
+  "suno": {
+    "fields": [
+      "authHelpText",
+      "credits",
+      "id",
+      "limits",
+      "limitsFetchedAt",
+      "name",
+      "plan",
+      "planModels",
+      "recentDays",
+      "recentUnit",
+      "schemaVersion",
+      "signInRequired",
+      "sourceFields",
+      "tierLabel",
+      "updatedAt",
+      "usageStatusText"
+    ],
+    "sourceFields": {
+      "billing": [
+        "accessible_features",
+        "agentic_limits",
+        "audio_upload_limits",
+        "can_upgrade_immediately",
+        "country_code",
+        "credit_packs",
+        "credits",
+        "day0_boost",
+        "default_currency",
+        "download_credit_packs",
+        "download_usage",
+        "eligible_currencies",
+        "free_cover_clips_remaining",
+        "free_mobile_remasters_remaining",
+        "free_mobile_v4_gens_remaining",
+        "free_persona_clips_remaining",
+        "free_remasters_remaining",
+        "free_vox_gens_remaining",
+        "free_web_v4_gens_remaining",
+        "has_been_student_subscriber_before",
+        "has_been_subscriber_before",
+        "has_valid_school_email",
+        "is_active",
+        "is_gifted",
+        "is_past_due",
+        "is_pause_scheduled",
+        "is_paused",
+        "last_subscription_period_end",
+        "max_active_custom_models",
+        "max_custom_model_clips",
+        "models",
+        "monthly_limit",
+        "monthly_usage",
+        "payment_method_type",
+        "period",
+        "period_end",
+        "plan",
+        "plan_currency",
+        "plan_currency_price",
+        "plan_price",
+        "plans",
+        "promotions",
+        "remaster_model_types",
+        "renews_on",
+        "revcat_subscriptions_offering_id",
+        "subscription_anchor",
+        "subscription_id",
+        "subscription_platform",
+        "subscription_type",
+        "total_credits_left",
+        "visual_credit_packs",
+        "visuals_credits_left",
+        "voice_record_limits",
+        "voice_upload_limits"
+      ],
+      "plan": [
+        "annual_price_usd",
+        "features",
+        "id",
+        "level",
+        "monthly_price_usd",
+        "name",
+        "plan_key",
+        "prices",
+        "usage_plan_features",
+        "visuals_credits"
       ]
     }
   }
@@ -351,11 +441,35 @@ function changeCheck(name, now, before) {
   return check(name, diff.added.length === 0 && diff.removed.length === 0, diffText(diff), true)
 }
 
+// A check that could not run: it needs a live answer, and the provider's
+// failure is already reported once (by "Signed in" or "Data is fresh").
+function skipped(name, why) {
+  return { name: name, state: "skipped", detail: why }
+}
+
+// Whether the record is a fresh answer from the provider, signed in: only
+// then do checks on what the provider sent (pools, fields, models) mean
+// anything. Otherwise one lapsed sign-in would fail half the list.
+function isLive(raw) {
+  return raw.limitsStale !== true && raw.signInRequired !== true && !aboutSignIn(raw)
+}
+
+function aboutSignIn(raw) {
+  var notice = String(raw.authHelpText || "").substring(0, 160)
+  return /sign|log ?in|auth|token|expired|lapsed/i.test(notice) && !/rate limit/i.test(notice)
+}
+
 function recordChecks(raw, provider, providerId, baseline) {
   var base = baseline || {}
   var checks = []
+  var live = isLive(raw)
+  var waiting = "needs a live answer from the provider; see Signed in / Data is fresh"
   checks.push(check("Has a limit for the bar", !!provider.headline, "no usable limit in the record"))
-  if (providerId === "gemini") {
+  if (!live) {
+    var names = providerId === "gemini" ? ["Google reports a Gemini pool"]
+      : providerId === "suno" ? ["Billing period reported"] : ["Weekly window reported"]
+    names.forEach(function(n) { checks.push(skipped(n, waiting)) })
+  } else if (providerId === "gemini") {
     var hasGemini = provider.pools.some(function(p) { return p.family === "gemini" })
     checks.push(check("Google reports a Gemini pool", hasGemini, "no Gemini models in Google's per-model quota"))
   } else if (providerId === "suno") {
@@ -379,20 +493,23 @@ function recordChecks(raw, provider, providerId, baseline) {
   checks.push(check("Data is fresh", raw.limitsStale !== true, "the last good answer is being reused"))
   // Collectors put every notice in authHelpText; only some are about the sign-in.
   var notice = String(raw.authHelpText || "").substring(0, 160)
-  var aboutSignIn = /sign|log ?in|auth|token|expired|lapsed/i.test(notice) && !/rate limit/i.test(notice)
-  checks.push(check("Signed in", !aboutSignIn, notice))
-  checks.push(check("Provider answered normally", !notice || aboutSignIn, notice))
+  var signInNotice = aboutSignIn(raw)
+  checks.push(check("Signed in", !signInNotice && raw.signInRequired !== true, notice || "not signed in"))
+  checks.push(check("Provider answered normally", !notice || signInNotice, notice))
 
+  // Baseline comparisons: only against a live answer.
+  var compare = []
   var fields = changeCheck("Record fields unchanged", Object.keys(raw).slice(0, 64).sort(), base.fields)
-  if (fields) checks.push(fields)
+  if (fields) compare.push(fields)
   if (providerId === "gemini") {
     var models = []
     provider.pools.forEach(function(p) { models = models.concat(p.models) })
     var modelCheck = changeCheck("Model list unchanged", models.sort(), base.models)
-    if (modelCheck) checks.push(modelCheck)
+    if (modelCheck) compare.push(modelCheck)
   }
   var sourceCheck = sourceFieldsCheck(raw, providerId, base)
-  if (sourceCheck) checks.push(sourceCheck)
+  if (sourceCheck) compare.push(sourceCheck)
+  compare.forEach(function(c) { checks.push(live ? c : skipped(c.name, waiting)) })
   return checks
 }
 
@@ -418,7 +535,7 @@ function sourceFieldsCheck(raw, providerId, base) {
 
 // The checks that didn't pass, as short sentences (IPC status, tests).
 function problems(checks) {
-  return (Array.isArray(checks) ? checks : []).filter(function(c) { return c.state !== "pass" })
+  return (Array.isArray(checks) ? checks : []).filter(function(c) { return c.state !== "pass" && c.state !== "skipped" })
     .map(function(c) { return c.name + (c.detail ? ": " + c.detail : "") })
 }
 
@@ -463,6 +580,10 @@ function parseProvider(stdout, providerId, nowMs, baseline) {
       tracksTokens: !!raw.todayTokensByModel && typeof raw.todayTokensByModel === "object",
       todayModels: parseModelTokens(raw.todayTokensByModel),
       recentDays: Array.isArray(raw.recentDays) ? raw.recentDays : [],
+      // What recentDays counts: agent CLIs count tokens, Suno credits.
+      recentUnit: /^[a-z]{1,12}$/.test(String(raw.recentUnit || "")) ? String(raw.recentUnit) : "tokens",
+      // A fresh, signed-in answer (else the numbers shown are old or absent).
+      live: isLive(raw),
       updatedAt: String(raw.updatedAt || ""),
       tier: String(raw.tierLabel || ""),
       fetchedAtMs: number(raw.limitsFetchedAt, 0),

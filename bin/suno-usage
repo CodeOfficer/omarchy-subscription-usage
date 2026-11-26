@@ -45,7 +45,7 @@ def empty_record():
     "schemaVersion": 1, "id": PROVIDER, "name": "Suno", "plan": "", "tierLabel": "",
     "limits": [], "credits": {}, "planModels": [], "sourceFields": {},
     "signInRequired": False, "usageStatusText": "", "authHelpText": "",
-    "limitsFetchedAt": 0, "updatedAt": "",
+    "limitsFetchedAt": 0, "updatedAt": "", "recentDays": [], "recentUnit": "credits",
   }
 
 
@@ -103,7 +103,7 @@ def build_record(info, now):
 
   limits = []
   if monthly and used is not None:
-    detail = f"{left:,} of {monthly:,} credits left" if left is not None else f"{used:,} of {monthly:,} credits used"
+    detail = f"{used:,} of {monthly:,} credits used"
     if extra:
       detail += f" · {extra:,} extra"
     limits.append({
@@ -115,7 +115,7 @@ def build_record(info, now):
   visuals_left = whole(info.get("visuals_credits_left"))
   if visuals_total and visuals_left is not None:
     limits.append({"label": "Visual credits", "title": "Visual credits", "percent": share(visuals_total - visuals_left, visuals_total),
-                   "resetsAt": end_text, "detail": f"{visuals_left:,} of {visuals_total:,} left"})
+                   "resetsAt": end_text, "detail": f"{visuals_total - visuals_left:,} of {visuals_total:,} used"})
   downloads = info.get("download_usage") if isinstance(info.get("download_usage"), dict) else {}
   dl_used = whole(downloads.get("current_period_downloads_used"))
   dl_limit = whole(downloads.get("current_period_downloads_limit"))
@@ -143,6 +143,74 @@ def build_record(info, now):
     limitsFetchedAt=int(now * 1000),
     updatedAt=datetime.fromtimestamp(now, timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
   )
+  return record
+
+
+# ---- Daily history ----------------------------------------------------------
+# Suno reports only the month's running total. To chart credits per day like
+# the token charts of the other providers, each run notes the total under
+# today's date; a day's use is its last total minus the day before's (or, on
+# the first day seen, minus its own first total). Days before the history
+# began are left out, not shown as zero.
+
+def history_path():
+  return bs.state_dir() / "suno-history.json"
+
+
+def load_history(path):
+  try:
+    data = json.loads(path.read_text())
+  except (OSError, ValueError):
+    return {}
+  return data if isinstance(data, dict) else {}
+
+
+def note_usage(history, day, used, period_end):
+  entry = history.get(day)
+  if not isinstance(entry, dict) or entry.get("period") != period_end:
+    entry = {"first": used, "last": used, "period": period_end}
+  entry["last"] = used
+  history[day] = entry
+  for old in sorted(history)[:-14]:
+    del history[old]
+  return history
+
+
+def recent_days(history, today, count=7):
+  days = sorted(d for d in history if d <= today)[-count:]
+  rows = []
+  for day in days:
+    entry = history[day]
+    earlier = [d for d in sorted(history) if d < day]
+    before = history[earlier[-1]] if earlier else None
+    if before and before.get("period") == entry.get("period"):
+      start = before.get("last", 0)
+    elif before:
+      start = 0  # a new billing period began since the day before
+    else:
+      start = entry.get("first", 0)
+    rows.append({"date": day, "messageCount": max(0, int(entry.get("last", 0)) - int(start))})
+  return rows
+
+
+def with_history(record, now, path=None):
+  credits = record.get("credits") or {}
+  used = credits.get("monthlyUsage")
+  if used is None:
+    return record
+  path = path or history_path()
+  today = time.strftime("%Y-%m-%d", time.localtime(now))
+  period = record["limits"][0]["resetsAt"] if record["limits"] else ""
+  history = note_usage(load_history(path), today, used, period)
+  try:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    os.chmod(path.parent, 0o700)
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(history))
+    os.replace(tmp, path)
+  except OSError:
+    pass
+  record["recentDays"] = recent_days(history, today)
   return record
 
 
@@ -177,7 +245,7 @@ def billing(now):
 def main():
   now = time.time()
   try:
-    record = build_record(billing(now), now)
+    record = with_history(build_record(billing(now), now), now)
   except bs.SignedOut as signed_out:
     record = empty_record()
     record.update(signInRequired=True, usageStatusText="Not signed in", authHelpText=str(signed_out) or SIGN_IN_HELP)

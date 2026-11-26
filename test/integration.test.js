@@ -61,14 +61,22 @@ function writeBaseline(results) {
   const baseline = {};
   // Providers skipped on this machine keep their existing baseline.
   Object.assign(baseline, M.BASELINE || {});
-  providers.forEach((p, i) => { baseline[p.id] = M.baselineOf(results[i].stdout, p.id); });
+  // Only from a healthy, live answer: a lapsed sign-in would otherwise
+  // record its missing pools and fields as the new normal.
+  providers.forEach((p, i) => {
+    const parsed = results[i].code === 0 ? M.parseProvider(results[i].stdout, p.id, Date.now(), null) : { ok: false };
+    const healthy = parsed.ok && parsed.provider.live && !parsed.provider.checks.some((c) => c.state === "fail");
+    if (!healthy) { console.log(`${p.id}: kept its old baseline (not signed in, stale or failing)`); return; }
+    baseline[p.id] = M.baselineOf(results[i].stdout, p.id);
+    console.log(`${p.id}: baseline updated`);
+  });
   const text = fs.readFileSync(modelPath, "utf8");
   const block = "// BASELINE-START\nvar BASELINE = " + JSON.stringify(baseline, null, 2) + "\n// BASELINE-END";
   fs.writeFileSync(modelPath, text.replace(/\/\/ BASELINE-START[\s\S]*?\/\/ BASELINE-END/, block));
   console.log("baseline written to Model.js — review the diff, then commit");
 }
 
-const mark = { pass: "✓", changed: "◆", fail: "✗" };
+const mark = { pass: "✓", changed: "◆", fail: "✗", skipped: "–" };
 
 (async () => {
   const live = process.argv.includes("--live");
@@ -95,8 +103,9 @@ const mark = { pass: "✓", changed: "◆", fail: "✗" };
     const head = parsed.ok && parsed.provider.headline;
     console.log(`\n${p.id.toUpperCase()}  ${head ? M.headlineText(head, Date.now()) : "no headline"}`);
     for (const c of checks) {
-      console.log(`  ${mark[c.state]} ${c.name}${c.state !== "pass" && c.detail ? `\n      ${c.detail}` : ""}`);
-      if (c.state !== "pass") bad++;
+      const quiet = c.state === "pass" || c.state === "skipped";
+      console.log(`  ${mark[c.state]} ${c.name}${!quiet && c.detail ? `\n      ${c.detail}` : ""}`);
+      if (!quiet) bad++;
     }
   });
   console.log(bad ? `\n${bad} check(s) failed or changed` : "\nall checks pass");

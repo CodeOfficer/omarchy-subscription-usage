@@ -52,7 +52,7 @@ def builds_the_shared_record_shape():
   r = suno.build_record(INFO, NOW)
   head = r["limits"][0]
   assert head == {"label": "Monthly (credits)", "title": "Credits", "percent": 0.2, "resetsAt": "2026-11-30T05:17:26Z",
-                  "windowStartsAt": "2026-10-30T05:17:26Z", "primary": True, "detail": "2,000 of 2,500 credits left"}, head
+                  "windowStartsAt": "2026-10-30T05:17:26Z", "primary": True, "detail": "500 of 2,500 credits used"}, head
   assert [l["label"] for l in r["limits"]] == ["Monthly (credits)", "Visual credits", "Downloads"]
   assert r["limits"][1]["percent"] == round(25 / 225, 4)
   assert r["limits"][2]["detail"] == "3 of 20 used"
@@ -78,7 +78,7 @@ def same_keys_signed_in_or_not():
 @test
 def extra_credits_and_status_flags():
   r = suno.build_record(dict(INFO, credits=500, is_paused=True), NOW)
-  assert r["limits"][0]["detail"] == "2,000 of 2,500 credits left · 500 extra"
+  assert r["limits"][0]["detail"] == "500 of 2,500 credits used · 500 extra"
   assert r["usageStatusText"] == "Subscription paused"
 
 
@@ -134,6 +134,33 @@ def token_cache_respects_expiry():
     bs.forget_token("suno")
     assert bs.cached_token("suno", NOW) is None
   assert bs.jwt_claims("not a jwt") is None
+
+
+@test
+def daily_history_charts_credits_per_day():
+  h = {}
+  suno.note_usage(h, "2026-11-24", 100, "P1")   # first day seen: only what was used while watching
+  suno.note_usage(h, "2026-11-24", 130, "P1")
+  suno.note_usage(h, "2026-11-25", 130, "P1")   # nothing used
+  suno.note_usage(h, "2026-11-26", 200, "P1")
+  assert suno.recent_days(h, "2026-11-26") == [
+    {"date": "2026-11-24", "messageCount": 30}, {"date": "2026-11-25", "messageCount": 0}, {"date": "2026-11-26", "messageCount": 70}]
+  suno.note_usage(h, "2026-11-30", 20, "P2")    # new billing month
+  assert suno.recent_days(h, "2026-11-30")[-1] == {"date": "2026-11-30", "messageCount": 20}
+  for d in range(1, 20):
+    suno.note_usage(h, f"2026-12-{d:02d}", d, "P2")
+  assert len(h) == 14 and len(suno.recent_days(h, "2026-12-19")) == 7
+
+
+@test
+def history_is_written_beside_the_token_cache():
+  from pathlib import Path
+  with tempfile.TemporaryDirectory() as tmp:
+    path = Path(tmp) / "h.json"
+    r = suno.with_history(suno.build_record(INFO, NOW), NOW, path)
+    assert r["recentDays"] == [{"date": r["recentDays"][0]["date"], "messageCount": 0}]
+    assert json.loads(path.read_text())[r["recentDays"][0]["date"]]["last"] == 500
+  assert suno.with_history(suno.empty_record(), NOW)["recentDays"] == []
 
 
 @test

@@ -8,7 +8,8 @@ const assert = require("assert");
 
 const now = Date.parse("2026-11-26T12:00:00Z");
 const HOUR = 3600000;
-const failing = (provider) => provider.checks.filter((c) => c.state !== "pass").map((c) => c.name);
+const failing = (provider) => provider.checks.filter((c) => c.state !== "pass" && c.state !== "skipped").map((c) => c.name);
+const skippedNames = (provider) => provider.checks.filter((c) => c.state === "skipped").map((c) => c.name);
 let count = 0;
 function test(name, fn) { fn(); count++; }
 
@@ -84,7 +85,9 @@ test("readable model names", () => {
 test("checks: failures for a lapsed sign-in", () => {
   const l = M.parseProvider(JSON.stringify({ usageStatusText: "Limits paused", authHelpText: "The Antigravity access token `agy` keeps has lapsed. Start `agy` to refresh it.", limits: [] }), "gemini", now, null);
   assert.strictEqual(l.provider.status, "Limits paused · The Antigravity access token `agy` keeps has lapsed. Start `agy` to refresh it.");
-  assert.deepStrictEqual(failing(l.provider), ["Has a limit for the bar", "Google reports a Gemini pool", "Signed in"]);
+  assert.deepStrictEqual(failing(l.provider), ["Has a limit for the bar", "Signed in"]);
+  assert.deepStrictEqual(skippedNames(l.provider), ["Google reports a Gemini pool"]);
+  assert.strictEqual(l.provider.live, false);
   assert.ok(l.provider.warnings.includes("Signed in: The Antigravity access token `agy` keeps has lapsed. Start `agy` to refresh it."));
 });
 
@@ -158,7 +161,8 @@ test("Suno: a lapsed sign-in asks for Sign in and fails the sign-in check", () =
   const out = sunoRecord({ limits: [], credits: {}, signInRequired: true, authHelpText: "Not signed in to Suno. Choose Sign in in the panel." });
   const p = M.parseProvider(JSON.stringify(out), "suno", now, null).provider;
   assert.strictEqual(p.signInNeeded, true);
-  assert.deepStrictEqual(failing(p), ["Has a limit for the bar", "Billing period reported", "Signed in"]);
+  assert.deepStrictEqual(failing(p), ["Has a limit for the bar", "Signed in"]);
+  assert.deepStrictEqual(skippedNames(p), ["Billing period reported"]);
 });
 
 test("Suno: credits that stop adding up fail a check", () => {
@@ -186,6 +190,25 @@ test("provider table: commands, placeholders, defaults", () => {
   const c = M.parseProvider(JSON.stringify({ limits: [{ label: "Weekly (7-day)", percent: 0.9, resetsAt: "2026-11-29T12:00:00Z" }] }), "claude", now, null).provider;
   assert.strictEqual(c.pace, c.weekly);
   assert.strictEqual(M.paceAlarm(c, now, 0.05), true);
+});
+
+test("a lapsed sign-in skips the baseline comparisons instead of failing them", () => {
+  // Gemini's collector after the agy token lapsed: old limits, no pools or Google fields.
+  const baseline = { fields: ["authHelpText", "googleFields", "limits", "limitsStale", "quotaPools"], models: ["gemini-3-flash"], googleFields: { quota: ["buckets"] } };
+  const stale = { limits: [{ label: "Session", percent: 0, resetsAt: "" }], limitsStale: true,
+    authHelpText: "The Antigravity access token `agy` keeps has lapsed. Start `agy` to refresh it." };
+  const p = M.parseProvider(JSON.stringify(stale), "gemini", now, baseline).provider;
+  assert.deepStrictEqual(failing(p), ["Data is fresh", "Signed in"]);
+  assert.deepStrictEqual(skippedNames(p), ["Google reports a Gemini pool", "Record fields unchanged", "Model list unchanged", "Google's fields unchanged"]);
+  assert.ok(p.warnings.every((w) => !/unchanged|pool/.test(w)));
+  assert.strictEqual(p.recentUnit, "tokens");
+});
+
+test("Suno charts credits, not tokens", () => {
+  const p = M.parseProvider(JSON.stringify(sunoRecord({ recentUnit: "credits", recentDays: [{ date: "2026-11-26", messageCount: 40 }] })), "suno", now, null).provider;
+  assert.strictEqual(p.recentUnit, "credits");
+  assert.strictEqual(M.recentTotal(p.recentDays), 40);
+  assert.strictEqual(M.parseProvider(JSON.stringify(sunoRecord({ recentUnit: "<b>" })), "suno", now, null).provider.recentUnit, "tokens");
 });
 
 console.log(`model tests: ${count} passed`);

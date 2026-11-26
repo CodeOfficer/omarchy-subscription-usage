@@ -511,6 +511,21 @@ Panel {
       font.pixelSize: Style.font.caption
     }
 
+    // A notice from the provider while numbers still show: old numbers
+    // (a lapsed sign-in) in the alarm colour, anything else dim.
+    Text {
+      visible: !!card.headline && !!card.provider.status
+      width: parent.width
+      textFormat: Text.PlainText
+      text: card.provider.status || ""
+      color: card.provider.live === false ? root.urgent : root.dim
+      font.family: root.fontFamily
+      font.pixelSize: Style.font.caption
+      wrapMode: Text.WordWrap
+      maximumLineCount: 3
+      elide: Text.ElideRight
+    }
+
     // No CLI keeps this provider's sign-in: open the plugin's own browser
     // window for it (bin/browser-signin).
     Text {
@@ -536,7 +551,7 @@ Panel {
       spacing: Style.space(5)
 
       SectionTitle {
-        text: "LAST 7 DAYS · " + Model.tokenCount(Model.recentTotal(card.provider.recentDays)) + " TOKENS"
+        text: "LAST 7 DAYS · " + Model.tokenCount(Model.recentTotal(card.provider.recentDays)) + " " + String(card.provider.recentUnit || "tokens").toUpperCase()
       }
 
       Row {
@@ -602,7 +617,8 @@ Panel {
         visible: !modelData.primary && !modelData.scoped
           && String(modelData.label || "").toLowerCase().indexOf("weekly") !== 0
         label: modelData.label
-        value: Model.percent(modelData.used) + " used · " + Model.shortResetText(modelData, root.nowMs)
+        // Counts when the collector gives them ("3 of 20 used"), else percent.
+        value: (modelData.detail ? modelData.detail : Model.percent(modelData.used) + " used") + " · " + Model.shortResetText(modelData, root.nowMs)
       }
     }
   }
@@ -627,7 +643,9 @@ Panel {
       provider: models.provider
       iconSource: models.iconSource
       tintIcon: models.tintIcon
-      line: models.pools.length > 0
+      lineColor: models.provider.live === false ? root.urgent : root.dim
+      line: models.provider.live === false ? "Per-model detail needs a fresh answer · " + (models.provider.status || "not signed in")
+        : models.pools.length > 0
         ? models.pools.length + " quota groups · " + (models.provider.tier || "plan") + " plan"
         : "One limit for every model · " + (models.provider.tier || "plan") + " plan"
     }
@@ -733,6 +751,8 @@ Panel {
     readonly property var checks: root.checksOf(provider)
     readonly property int failed: checks.filter(function(c) { return c.state === "fail" }).length
     readonly property int changed: checks.filter(function(c) { return c.state === "changed" }).length
+    readonly property int skippedCount: checks.filter(function(c) { return c.state === "skipped" }).length
+    readonly property int passed: checks.length - failed - changed - skippedCount
     spacing: Style.space(6)
 
     CardHeader {
@@ -742,7 +762,7 @@ Panel {
       tintIcon: checksCard.tintIcon
       lineColor: checksCard.failed > 0 ? root.urgent : root.dim
       line: checksCard.checks.length === 0 ? "Not checked yet"
-        : checksCard.failed > 0 ? checksCard.failed + " failed · " + (checksCard.checks.length - checksCard.failed - checksCard.changed) + " passed"
+        : checksCard.failed > 0 ? checksCard.failed + " failed · " + checksCard.passed + " passed" + (checksCard.skippedCount ? " · " + checksCard.skippedCount + " skipped" : "")
         : checksCard.changed > 0 ? "All good · " + checksCard.changed + " changed since baseline"
         : "All " + checksCard.checks.length + " checks pass"
     }
@@ -757,20 +777,22 @@ Panel {
         Text {
           width: parent.width
           textFormat: Text.PlainText
-          text: (modelData.state === "pass" ? "✓  " : modelData.state === "changed" ? "◆  " : "✗  ") + modelData.name
+          text: (modelData.state === "pass" ? "✓  " : modelData.state === "changed" ? "◆  " : modelData.state === "skipped" ? "–  " : "✗  ") + modelData.name
           color: modelData.state === "fail" ? root.urgent : modelData.state === "changed" ? root.foreground : root.dim
           font.family: root.fontFamily
           font.pixelSize: Style.font.caption
-          font.bold: modelData.state !== "pass"
+          font.bold: modelData.state === "fail" || modelData.state === "changed"
+          opacity: modelData.state === "skipped" ? 0.6 : 1
         }
 
         Text {
-          visible: modelData.detail !== ""
+          visible: modelData.detail !== "" && modelData.state !== "skipped"
           width: parent.width
           leftPadding: Style.space(18)
           textFormat: Text.PlainText
           text: modelData.detail
           color: modelData.state === "fail" ? root.urgent : root.dim
+          opacity: modelData.state === "skipped" ? 0.6 : 1
           font.family: root.fontFamily
           font.pixelSize: Style.font.caption
           wrapMode: Text.WordWrap
