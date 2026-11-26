@@ -495,8 +495,10 @@ Panel {
         color: card.behind ? root.urgent : root.foreground
       }
 
-      // Where the time gone stands on the same scale: use left of the
-      // mark is behind time, right of it ahead.
+      // How much of the week (or month) has gone, on the same scale as use:
+      // fill short of the mark is use behind time. The reset countdown says
+      // the same in words, so there is no line for it. Red (card.behind)
+      // when use runs ahead of the mark by more than the tolerance.
       Rectangle {
         visible: !!card.pace && Model.started(card.pace)
         x: Math.round(parent.width * Model.timeGone(card.pace, root.nowMs)) - width / 2
@@ -507,17 +509,6 @@ Panel {
         color: root.foreground
         opacity: 0.85
       }
-    }
-
-    InfoRow {
-      visible: !!card.pace
-      width: parent.width
-      // Two facts side by side: how much of the period has gone, how much
-      // is used. Red when use runs ahead of time by more than the tolerance.
-      label: Model.periodText(card.pace, root.nowMs)
-      labelColor: card.behind ? root.urgent : root.dim
-      value: Model.percent(card.pace ? card.pace.used : 0) + " used"
-      valueColor: card.behind ? root.urgent : root.dim
     }
 
     Text {

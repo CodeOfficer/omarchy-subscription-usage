@@ -1,8 +1,6 @@
 .pragma library
 
-var HOUR_MS = 60 * 60 * 1000
-var DAY_MS = 24 * HOUR_MS
-var WEEK_MS = 7 * DAY_MS
+var WEEK_MS = 7 * 24 * 60 * 60 * 1000
 
 // How far use can run ahead of the time gone before it turns red. Without
 // it, a week that starts with your first prompt (Codex) would be red at
@@ -642,34 +640,11 @@ function paceAlarm(provider, nowMs, tolerance) {
   return !!provider && behindPace(provider.pace, nowMs, tolerance)
 }
 
-// The period a limit runs over, as a word people use: week, month, day.
-function periodWord(limit) {
-  var window = windowName(limit)
-  if (window === "weekly") return "week"
-  if (window === "monthly") return "month"
-  return /^daily/i.test(String(limit ? (limit.rawLabel || limit.label) : "")) ? "day" : "window"
-}
-
 // The share of the period that has gone by: what the panel sets use against.
 function timeGone(limit, nowMs) {
   return started(limit) ? 1 - expectedRemaining(limit, nowMs) : 0
 }
 
-// Where you are in the period, counted the way people count it: "Day 7 of
-// 7" for a week, "Day 28 of 31" for a billing month, "Hour 3 of 24" for a
-// day. Shown beside the percent used; red when use runs ahead of time.
-function periodText(limit, nowMs) {
-  if (!limit) return ""
-  if (!started(limit)) {
-    var word = periodWord(limit)
-    return word.charAt(0).toUpperCase() + word.substring(1) + " not started"
-  }
-  var length = limit.windowMs > 0 ? limit.windowMs : WEEK_MS
-  var unit = length >= 2 * DAY_MS ? DAY_MS : HOUR_MS
-  var total = Math.max(1, Math.round(length / unit))
-  var elapsed = clamp(length - (limit.resetMs - nowMs), 0, length)
-  return (unit === DAY_MS ? "Day " : "Hour ") + Math.min(total, Math.floor(elapsed / unit) + 1) + " of " + total
-}
 
 // ---- Text ---------------------------------------------------------------
 
@@ -783,9 +758,7 @@ var exportsObject = {
   expectedRemaining: expectedRemaining,
   behindPace: behindPace,
   paceDifference: paceDifference,
-  periodWord: periodWord,
   timeGone: timeGone,
-  periodText: periodText,
   percent: percent,
   countdown: countdown,
   started: started,

@@ -10,7 +10,7 @@ limits, the allowance your subscription includes, not API billing.
 
 Click it for detail in three views, switched with `←` `→` or `1` `2` `3`:
 
-1. **Overview**: each plan's limit, when it resets, how much of the week (or month) has gone, and tokens over the last
+1. **Overview**: each plan's limit, when it resets (a mark on the bar shows how much of the week has gone), and tokens over the last
    seven days.
 2. **Models**: per-model quota where the provider reports it, and today's tokens per model.
 3. **Debug**: checks on each provider's data, so you can tell when a provider changes what it
@@ -90,8 +90,7 @@ omarchy bar set codeofficer.subscription-usage barDetail "Percent and reset"
   to Debug and back, Escape closes.
 - A provider turns red when its weekly use runs more than the tolerance ahead of the week. For
   example, five days into a seven-day week (71% of it gone), 77% used turns red; 58% does not.
-  The panel shows where you are in the period beside the use ("Day 5 of 7 · 77% used", or "Day 28
-  of 31" for Suno's month) and marks that point on the bar.
+  A mark on each bar shows how much of the week (or Suno's month) has gone.
 
 ## Checking it yourself
 
