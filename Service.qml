@@ -13,7 +13,6 @@ Item {
   property var records: initialRecords()
   property bool refreshing: false
   property string lastError: ""
-  property date lastUpdated: new Date(0)
   property double _startedAt: 0
   property int _pending: 0
 
@@ -25,7 +24,6 @@ Item {
     .map(function(p) { return p.id })
   readonly property int refreshIntervalSec: intSetting("refreshIntervalSec", 300, 60, 3600)
   readonly property bool signingIn: signInProcess.running
-  property string signInProvider: ""
 
   function initialRecords() {
     var map = {}
@@ -100,10 +98,7 @@ Item {
 
   function finishOne() {
     _pending = Math.max(0, _pending - 1)
-    if (_pending === 0) {
-      refreshing = false
-      lastUpdated = new Date()
-    }
+    if (_pending === 0) refreshing = false
   }
 
   // Opens the provider's sign-in window (bin/browser-signin); refreshes when
@@ -111,7 +106,6 @@ Item {
   function signIn(id) {
     var c = config(id)
     if (!c || !c.signIn || signInProcess.running) return false
-    signInProvider = id
     signInProcess.command = [binDir + "/browser-signin", c.id, c.signIn.url]
     signInProcess.running = true
     return true
@@ -185,9 +179,6 @@ Item {
     id: signInProcess
     running: false
     command: []
-    onExited: function() {
-      root.signInProvider = ""
-      root.refresh()
-    }
+    onExited: root.refresh()
   }
 }

@@ -37,9 +37,8 @@ import time
 from pathlib import Path
 
 sys.dont_write_bytecode = True
-# Omarchy's Antigravity collector, found on PATH like any Omarchy command;
-# AGENT_USAGE_AGY_COLLECTOR points elsewhere (a dev checkout of Omarchy).
-COLLECTOR = os.environ.get("AGENT_USAGE_AGY_COLLECTOR") or shutil.which("omarchy-agent-usage-agy") or "omarchy-agent-usage-agy"
+# Omarchy's Antigravity collector, on PATH like any Omarchy command.
+COLLECTOR = shutil.which("omarchy-agent-usage-agy") or "omarchy-agent-usage-agy"
 MAX_BUCKETS = 64
 MODEL_ID = re.compile(r"^[A-Za-z0-9._-]{1,80}$")
 GOOGLE_TOKEN = re.compile(r"^ya29\.[A-Za-z0-9._-]{20,4096}$")
@@ -74,13 +73,11 @@ def load_collector():
   return module
 
 
-def omp_database():
-  return Path(os.environ.get("AGENT_USAGE_OMP_DB") or (Path.home() / ".omp" / "agent" / "agent.db"))
+OMP_DB = Path.home() / ".omp" / "agent" / "agent.db"
 
 
-def omp_signed_in(db=None):
+def omp_signed_in(db=OMP_DB):
   """omp keeps an Antigravity sign-in (so omp is installed, not just a shim)."""
-  db = db or omp_database()
   if not db.is_file():
     return False
   try:
@@ -94,15 +91,12 @@ def omp_signed_in(db=None):
   return row is not None
 
 
-def omp_token(run=subprocess.run):
+def omp_token(db=OMP_DB, run=subprocess.run):
   """A live Google token from omp, which renews its own sign-in; or None."""
-  if not omp_signed_in():
-    return None
-  omp = shutil.which("omp")
-  if not omp:
+  if not omp_signed_in(db):
     return None
   try:
-    out = run([omp, "token", OMP_PROVIDER], stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=30, cwd=str(Path.home()))
+    out = run(["omp", "token", OMP_PROVIDER], stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=30, cwd=str(Path.home()))
   except (OSError, subprocess.SubprocessError):
     return None
   token = str(out.stdout or "").strip()
@@ -233,7 +227,7 @@ def main():
   limits.extend(summary_limits(summary))
   # A live answer, whichever sign-in gave it: the base record's "paused"
   # notice and stale flag no longer apply.
-  record.update(limits=limits, quotaPools=pools, googleFields=google_fields(quota, summary), usageStatusText="", authHelpText="",
+  record.update(limits=limits, quotaPools=pools, sourceFields=google_fields(quota, summary), usageStatusText="", authHelpText="",
                 limitsStale=False, limitsFetchedAt=int(now * 1000), tokenSource=source)
   print(json.dumps(record))
 

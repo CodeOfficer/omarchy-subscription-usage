@@ -53,7 +53,7 @@ credits used. The panel also lists visual credits and downloads.
   usual, Google sign-in included, and close the window. The sign-in lasts about a year.
 
 The widget reads the sign-ins those CLIs, or that profile, already keep. It never stores
-passwords; for Suno it caches only the one-hour access token, readable by you alone.
+passwords or tokens: for Suno it asks for a fresh one-hour token each time it checks.
 
 Suno usage comes from the endpoint suno.com itself uses, which is not a public API and may change.
 

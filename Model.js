@@ -104,7 +104,6 @@ var BASELINE = {
       "activeDates",
       "activeDays",
       "authHelpText",
-      "googleFields",
       "hasLocalStats",
       "hasPromptStats",
       "id",
@@ -119,6 +118,7 @@ var BASELINE = {
       "retryAdvised",
       "schemaVersion",
       "setupNeeded",
+      "sourceFields",
       "tierLabel",
       "todayPrompts",
       "todaySessions",
@@ -150,7 +150,7 @@ var BASELINE = {
       "tab_flash_lite_preview",
       "tab_jump_flash_lite_preview"
     ],
-    "googleFields": {
+    "sourceFields": {
       "quota": [
         "buckets"
       ],
@@ -519,16 +519,11 @@ function recordChecks(raw, provider, providerId, baseline) {
   return checks
 }
 
-// The field names the vendor's own service answered with, compared with the
-// baseline. Gemini's collector calls them googleFields; others sourceFields.
-function sourceFieldsKey(providerId) {
-  return providerId === "gemini" ? "googleFields" : "sourceFields"
-}
-
+// The field names the vendor's own service answered with (sourceFields),
+// compared with the baseline.
 function sourceFieldsCheck(raw, providerId, base) {
-  var key = sourceFieldsKey(providerId)
-  var now = raw[key] && typeof raw[key] === "object" ? raw[key] : {}
-  var before = base[key] || {}
+  var now = raw.sourceFields && typeof raw.sourceFields === "object" ? raw.sourceFields : {}
+  var before = base.sourceFields || {}
   if (Object.keys(before).length === 0) return null
   var changes = []
   Object.keys(before).forEach(function(part) {
@@ -617,8 +612,7 @@ function baselineOf(stdout, providerId) {
     parsePools(raw.quotaPools, Date.now()).forEach(function(p) { models = models.concat(p.models) })
     entry.models = models.sort()
   }
-  var key = sourceFieldsKey(providerId)
-  if (raw[key] && typeof raw[key] === "object") entry[key] = raw[key]
+  if (raw.sourceFields && typeof raw.sourceFields === "object") entry.sourceFields = raw.sourceFields
   return entry
 }
 

@@ -5,7 +5,7 @@ Some subscriptions have no CLI that keeps a sign-in (Suno). For those,
 $XDG_STATE_HOME/subscription-usage/profiles/<id>, started with
 --password-store=basic, and you sign in there as on any site (Google sign-in
 included). This module reads that profile's cookies; nothing is copied out of
-it except short-lived access tokens, cached next to it with mode 600.
+it or written anywhere else.
 
 Also here: the two requests to a Clerk-hosted sign-in (Suno uses Clerk) that
 turn the long-lived `__client` cookie into a short-lived bearer token.
@@ -103,8 +103,6 @@ def read_cookie(profile, host, name):
   return None
 
 
-# ---- Token cache ----------------------------------------------------------
-
 def jwt_claims(token):
   if not isinstance(token, str) or not JWT.match(token):
     return None
@@ -114,38 +112,6 @@ def jwt_claims(token):
   except (ValueError, json.JSONDecodeError):
     return None
   return claims if isinstance(claims, dict) else None
-
-
-def cache_path(provider):
-  return state_dir() / f"{provider}-token.json"
-
-
-def cached_token(provider, now, margin=120):
-  try:
-    data = json.loads(cache_path(provider).read_text())
-  except (OSError, ValueError):
-    return None
-  token = data.get("jwt") if isinstance(data, dict) else None
-  claims = jwt_claims(token)
-  return token if claims and float(claims.get("exp") or 0) > now + margin else None
-
-
-def store_token(provider, token):
-  path = cache_path(provider)
-  path.parent.mkdir(parents=True, exist_ok=True)
-  os.chmod(path.parent, 0o700)
-  tmp = path.with_suffix(".tmp")
-  fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-  with os.fdopen(fd, "w") as f:
-    json.dump({"jwt": token}, f)
-  os.replace(tmp, path)
-
-
-def forget_token(provider):
-  try:
-    cache_path(provider).unlink()
-  except OSError:
-    pass
 
 
 # ---- HTTP and Clerk -------------------------------------------------------

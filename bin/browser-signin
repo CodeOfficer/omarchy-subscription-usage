@@ -24,11 +24,6 @@ profile=$state/profiles/$id
 mkdir -p "$profile"
 chmod 700 "$state" "$state/profiles" "$profile"
 
-browser=""
-for candidate in chromium google-chrome-stable google-chrome brave; do
-  if command -v "$candidate" >/dev/null; then browser=$candidate; break; fi
-done
-[[ -n $browser ]] || { echo "browser-signin: needs Chromium (or Chrome/Brave) installed" >&2; exit 1; }
-
-exec "$browser" --user-data-dir="$profile" --password-store=basic \
+# Omarchy's browser; a profile of its own keeps your everyday one untouched.
+exec chromium --user-data-dir="$profile" --password-store=basic \
   --no-first-run --no-default-browser-check --class=subscription-usage-signin --app="$url"

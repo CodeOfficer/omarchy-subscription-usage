@@ -120,19 +120,10 @@ def reads_a_chromium_v10_cookie():
 
 
 @test
-def token_cache_respects_expiry():
+def jwt_claims_reads_only_well_formed_tokens():
   import base64
-  def jwt(exp):
-    part = base64.urlsafe_b64encode(json.dumps({"exp": exp}).encode()).decode().rstrip("=")
-    return "eyJhbGciOiJSUzI1NiJ9." + part + ".c2lnbmF0dXJlLXNpZw"
-  with tempfile.TemporaryDirectory() as tmp:
-    os.environ["XDG_STATE_HOME"] = tmp
-    bs.store_token("suno", jwt(NOW + 3600))
-    assert bs.cached_token("suno", NOW) is not None
-    assert oct(os.stat(bs.cache_path("suno")).st_mode & 0o777) == "0o600"
-    assert bs.cached_token("suno", NOW + 3550) is None  # inside the 2-minute margin
-    bs.forget_token("suno")
-    assert bs.cached_token("suno", NOW) is None
+  part = base64.urlsafe_b64encode(json.dumps({"exp": 1}).encode()).decode().rstrip("=")
+  assert bs.jwt_claims("eyJhbGciOiJSUzI1NiJ9." + part + ".c2lnbmF0dXJlLXNpZw") == {"exp": 1}
   assert bs.jwt_claims("not a jwt") is None
 
 
@@ -155,7 +146,7 @@ def daily_history_charts_credits_per_day():
 
 
 @test
-def history_is_written_beside_the_token_cache():
+def history_is_written_to_the_state_folder():
   from pathlib import Path
   with tempfile.TemporaryDirectory() as tmp:
     path = Path(tmp) / "h.json"

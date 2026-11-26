@@ -92,24 +92,24 @@ test("checks: failures for a lapsed sign-in", () => {
 });
 
 test("checks: new fields and new models show as changed, not failed", () => {
-  const baseline = { fields: ["limits", "quotaPools"], models: ["gemini-3-flash"], googleFields: { quotaBucket: ["modelId", "remainingFraction"] } };
+  const baseline = { fields: ["limits", "quotaPools"], models: ["gemini-3-flash"], sourceFields: { quotaBucket: ["modelId", "remainingFraction"] } };
   const record = {
     limits: [{ label: "Gemini (5-hour)", percent: 0.1, resetsAt: "2026-11-26T16:00:00Z", primary: true }],
     quotaPools: [{ family: "gemini", name: "Gemini", used: 0.1, resetsAt: "2026-11-26T16:00:00Z", models: ["gemini-3-flash", "gemini-4-neon"] }],
-    googleFields: { quotaBucket: ["modelId", "remainingFraction", "tokenType"] },
+    sourceFields: { quotaBucket: ["modelId", "remainingFraction", "tokenType"] },
     newThing: 1 };
   const p = M.parseProvider(JSON.stringify(record), "gemini", now, baseline).provider;
   const byName = Object.fromEntries(p.checks.map((c) => [c.name, c]));
   assert.strictEqual(byName["Record fields unchanged"].state, "changed");
-  assert.strictEqual(byName["Record fields unchanged"].detail, "new: googleFields, newThing");
+  assert.strictEqual(byName["Record fields unchanged"].detail, "new: newThing, sourceFields");
   assert.strictEqual(byName["Model list unchanged"].detail, "new: gemini-4-neon");
   assert.strictEqual(byName["Google's fields unchanged"].detail, "quotaBucket new: tokenType");
   assert.ok(p.checks.every((c) => c.state !== "fail"));
 });
 
 test("baselineOf captures what the checks compare against", () => {
-  const out = JSON.stringify({ limits: [], quotaPools: [{ family: "gemini", models: ["gemini-3-flash"] }], googleFields: { quota: ["buckets"] } });
-  assert.deepStrictEqual(M.baselineOf(out, "gemini"), { fields: ["googleFields", "limits", "quotaPools"], models: ["gemini-3-flash"], googleFields: { quota: ["buckets"] } });
+  const out = JSON.stringify({ limits: [], quotaPools: [{ family: "gemini", models: ["gemini-3-flash"] }], sourceFields: { quota: ["buckets"] } });
+  assert.deepStrictEqual(M.baselineOf(out, "gemini"), { fields: ["limits", "quotaPools", "sourceFields"], models: ["gemini-3-flash"], sourceFields: { quota: ["buckets"] } });
 });
 
 test("a rate-limit notice is not a sign-in failure", () => {
@@ -194,7 +194,7 @@ test("provider table: commands, placeholders, defaults", () => {
 
 test("a lapsed sign-in skips the baseline comparisons instead of failing them", () => {
   // Gemini's collector after the agy token lapsed: old limits, no pools or Google fields.
-  const baseline = { fields: ["authHelpText", "googleFields", "limits", "limitsStale", "quotaPools"], models: ["gemini-3-flash"], googleFields: { quota: ["buckets"] } };
+  const baseline = { fields: ["authHelpText", "sourceFields", "limits", "limitsStale", "quotaPools"], models: ["gemini-3-flash"], sourceFields: { quota: ["buckets"] } };
   const stale = { limits: [{ label: "Session", percent: 0, resetsAt: "" }], limitsStale: true,
     authHelpText: "The Antigravity access token `agy` keeps has lapsed. Start `agy` to refresh it." };
   const p = M.parseProvider(JSON.stringify(stale), "gemini", now, baseline).provider;

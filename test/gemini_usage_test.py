@@ -67,21 +67,18 @@ def omp_counts_only_an_enabled_antigravity_cli_sign_in():
 def omp_is_never_run_without_its_sign_in():
   # On a fresh Omarchy machine `omp` is a lazy-install shim: calling it
   # would download ~300 MB. No sign-in in omp's database, no call.
-  os.environ["AGENT_USAGE_OMP_DB"] = "/nonexistent/agent.db"
   ran = Ran(GOOD)
-  assert g.omp_token(run=ran) is None and ran.calls == 0
+  assert g.omp_token(db=Path("/nonexistent/agent.db"), run=ran) is None and ran.calls == 0
 
 
 @test
 def omp_token_is_validated():
   with tempfile.TemporaryDirectory() as tmp:
-    os.environ["AGENT_USAGE_OMP_DB"] = str(omp_db(tmp))
-    if not g.shutil.which("omp"):
-      return  # no omp on this machine: nothing more to check
-    assert g.omp_token(run=Ran(GOOD + "\n")) == GOOD
-    assert g.omp_token(run=Ran("Error: not signed in")) is None
-    assert g.omp_token(run=Ran(GOOD, code=1)) is None
-    assert g.omp_token(run=Ran("ya29.<script>")) is None
+    db = omp_db(tmp)
+    assert g.omp_token(db, run=Ran(GOOD + "\n")) == GOOD
+    assert g.omp_token(db, run=Ran("Error: not signed in")) is None
+    assert g.omp_token(db, run=Ran(GOOD, code=1)) is None
+    assert g.omp_token(db, run=Ran("ya29.<script>")) is None
 
 
 print(f"gemini tests: {count} passed")

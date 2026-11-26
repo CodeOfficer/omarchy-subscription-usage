@@ -71,7 +71,8 @@ node test/integration.test.js --live           # collectors + the running widget
 2. A collector printing the shared record (`limits[]` with `label`/`percent`/`resetsAt`, optional
    `windowStartsAt`, `primary`, `detail`; `plan`, `tierLabel`, `usageStatusText`, `authHelpText`,
    `signInRequired`). Same keys every run, signed in or not. Exit 0 with help text when signed out.
-3. Web-only sign-in: use `browser_session.py` (profile cookie, token cache, `clerk_token`).
+3. Web-only sign-in: use `browser_session.py` (profile cookie, `clerk_token`). Vendor field names go
+   in `sourceFields` for the baseline check.
 4. The icon, a manifest `defaults` + `schema` entry, a README row, checks in `recordChecks`, tests,
    then `--update-baseline` once it runs.
 
@@ -104,7 +105,9 @@ experiment, only when the person explicitly asks.
 
 - Bar stays compact (percent by default); detail belongs in Models or Debug, not Overview.
 - Every fix gets a unit test; every provider-shape assumption gets a check in `recordChecks`.
-- Secrets: cookies stay in the browser profile; only short-lived tokens are cached (mode 600, in
-  `~/.local/state/subscription-usage`). Never log or print a token or cookie.
+- Secrets: cookies stay in the browser profile (`~/.local/state/subscription-usage`, mode 700);
+  tokens are fetched per run and never written. Never log or print a token or cookie.
+- Use what Omarchy ships (Chromium, its terminal launcher, mise tools, its collectors) rather than
+  supporting alternatives; check a lazy mise tool is really installed before calling it.
 - Upstream: `upstream` remote is robzolkos/omarchy-agent-usage; merge its fixes with
   `git fetch upstream && git merge upstream/master`.
