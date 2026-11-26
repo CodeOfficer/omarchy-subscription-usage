@@ -570,7 +570,8 @@ Panel {
       delegate: InfoRow {
         required property var modelData
         width: card.width
-        visible: modelData !== card.headline && modelData !== card.weekly && !modelData.scoped
+        // Compared by flags and labels: objects lose identity through modelData.
+        visible: !modelData.primary && !modelData.scoped
           && String(modelData.label || "").toLowerCase().indexOf("weekly") !== 0
         label: modelData.label
         value: Model.percent(modelData.used) + " used · " + Model.shortResetText(modelData, root.nowMs)
