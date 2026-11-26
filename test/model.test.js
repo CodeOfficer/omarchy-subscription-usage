@@ -115,6 +115,83 @@ test("a rate-limit notice is not a sign-in failure", () => {
   assert.deepStrictEqual(failing(r.provider), ["Provider answered normally"]);
 });
 
+// A Suno record as bin/suno-usage prints it (made-up account values).
+function sunoRecord(over) {
+  return Object.assign({
+    name: "Suno", plan: "Pro Plan", tierLabel: "Pro", signInRequired: false, usageStatusText: "", authHelpText: "",
+    limits: [
+      { label: "Monthly (credits)", title: "Credits", percent: 0.2, resetsAt: "2026-11-30T05:00:00Z",
+        windowStartsAt: "2026-10-30T05:00:00Z", primary: true, detail: "2,000 of 2,500 credits left" },
+      { label: "Visual credits", title: "Visual credits", percent: 0, resetsAt: "2026-11-30T05:00:00Z" }],
+    credits: { monthlyLimit: 2500, monthlyUsage: 500, left: 2000, extra: 0 },
+    planModels: ["v6", "v6-wild", "<b>x</b>"],
+    sourceFields: { billing: ["monthly_limit", "monthly_usage"] },
+  }, over || {});
+}
+
+test("Suno: the billing month is the headline and is paced over its own length", () => {
+  const p = M.parseProvider(JSON.stringify(sunoRecord()), "suno", now, null).provider;
+  assert.strictEqual(p.weekly, null);
+  assert.strictEqual(p.pace, p.headline);
+  assert.strictEqual(p.paceMode, "under");
+  assert.strictEqual(p.headline.windowMs, 31 * 24 * HOUR);
+  assert.strictEqual(p.headline.detail, "2,000 of 2,500 credits left");
+  assert.strictEqual(M.headlineText(p.headline, now), "20% used · resets in 3d 17h");
+  // 3d 17h of 31 days left: an even pace would have used 88%.
+  assert.strictEqual(M.expectedText(p.pace, now), "Expected 88% used");
+  assert.deepStrictEqual(p.planModels, ["v6", "v6-wild"]);
+  assert.strictEqual(p.tracksTokens, false);
+  assert.deepStrictEqual(failing(p), []);
+});
+
+test("Suno: unused credits near the reset raise the alarm; heavy use does not", () => {
+  const idle = M.parseProvider(JSON.stringify(sunoRecord()), "suno", now, null).provider;
+  assert.strictEqual(M.paceAlarm(idle, now, 0.05), true);
+  assert.strictEqual(M.paceText(idle.pace, now, 0.05, "under"), "68% unused vs pace");
+  const busy = sunoRecord();
+  busy.limits[0].percent = 0.95;
+  const b = M.parseProvider(JSON.stringify(busy), "suno", now, null).provider;
+  assert.strictEqual(M.paceAlarm(b, now, 0.05), false);
+  assert.strictEqual(M.paceText(b.pace, now, 0.05, "under"), "7% ahead of pace");
+  // The same record paced as a cap (Claude-style) would be the other way round.
+  assert.strictEqual(M.behindPace(b.pace, now, 0.05), true);
+});
+
+test("Suno: a lapsed sign-in asks for Sign in and fails the sign-in check", () => {
+  const out = sunoRecord({ limits: [], credits: {}, signInRequired: true, authHelpText: "Not signed in to Suno. Choose Sign in in the panel." });
+  const p = M.parseProvider(JSON.stringify(out), "suno", now, null).provider;
+  assert.strictEqual(p.signInNeeded, true);
+  assert.deepStrictEqual(failing(p), ["Has a limit for the bar", "Billing period reported", "Signed in"]);
+});
+
+test("Suno: credits that stop adding up fail a check", () => {
+  const p = M.parseProvider(JSON.stringify(sunoRecord({ credits: { monthlyLimit: 2500, monthlyUsage: 2500, left: 50, extra: 0 } })), "suno", now, null).provider;
+  assert.deepStrictEqual(failing(p), ["Credits add up"]);
+});
+
+test("Suno: source fields compare against the baseline", () => {
+  const base = { fields: Object.keys(sunoRecord()).sort(), sourceFields: { billing: ["monthly_limit"] } };
+  const p = M.parseProvider(JSON.stringify(sunoRecord()), "suno", now, base).provider;
+  const c = p.checks.find((x) => x.name === "Suno's fields unchanged");
+  assert.strictEqual(c.state, "changed");
+  assert.strictEqual(c.detail, "billing new: monthly_usage");
+  assert.deepStrictEqual(M.baselineOf(JSON.stringify(sunoRecord()), "suno").sourceFields, { billing: ["monthly_limit", "monthly_usage"] });
+});
+
+test("provider table: commands, placeholders, defaults", () => {
+  assert.deepStrictEqual(M.PROVIDERS.map((p) => p.id), ["claude", "codex", "gemini", "suno"]);
+  assert.deepStrictEqual(M.commandOf(M.providerConfig("gemini"), "/x/bin"), ["/x/bin/gemini-usage"]);
+  assert.deepStrictEqual(M.commandOf(M.providerConfig("claude"), "/x/bin"), ["omarchy-agent-usage-claude", "--limits-only"]);
+  assert.strictEqual(M.providerConfig("suno").defaultOn, false);
+  assert.strictEqual(M.placeholder(M.providerConfig("codex")).status, "Loading…");
+  assert.strictEqual(M.providerConfig("nope"), null);
+  // Claude/Codex: a week is paced as a cap.
+  const c = M.parseProvider(JSON.stringify({ limits: [{ label: "Weekly (7-day)", percent: 0.9, resetsAt: "2026-11-29T12:00:00Z" }] }), "claude", now, null).provider;
+  assert.strictEqual(c.pace, c.weekly);
+  assert.strictEqual(c.paceMode, "over");
+  assert.strictEqual(M.paceAlarm(c, now, 0.05), true);
+});
+
 console.log(`model tests: ${count} passed`);
 
 test("pool model text accepts array-like lists from QML", () => {

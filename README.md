@@ -1,8 +1,8 @@
-# Agent Usage for Omarchy
+# Subscription Usage for Omarchy
 
 An Omarchy bar widget that shows how much of each AI subscription you've used: Claude, Codex
-(ChatGPT plans) and Gemini (Google AI plans). It reads your **plan's** limits, the allowance your
-subscription includes, not API billing.
+(ChatGPT plans), Gemini (Google AI plans) and, if you turn it on, Suno. It reads your **plan's**
+limits, the allowance your subscription includes, not API billing.
 
 ```text
 ✳ Claude 4%  │  ◉ Codex 1%  │  ⋀ Gemini 2%
@@ -16,10 +16,11 @@ Click it for detail in three views, switched with `←` `→` or `1` `2` `3`:
 3. **Debug**: checks on each provider's data, so you can tell when a provider changes what it
    reports (✓ pass, ✗ fail, ◆ changed).
 
-![Agent Usage: the Overview and Models views](preview.png)
+![Subscription Usage: the Overview and Models views](preview.png)
 
 > Started as a fork of [robzolkos/omarchy-agent-usage](https://github.com/robzolkos/omarchy-agent-usage),
 > which covers Claude and Codex.
+> Formerly *Agent Usage* (`codeofficer.agent-usage`).
 
 ## What each provider reports
 
@@ -28,9 +29,14 @@ Click it for detail in three views, switched with `←` `→` or `1` `2` `3`:
 | Claude | Pro, Max | Weekly limit | Claude Code and claude.ai (one shared limit) | — |
 | Codex | ChatGPT Plus, Pro | Weekly Codex limit | Codex CLI, IDE and web | ChatGPT chat messages (not reported) |
 | Gemini | Google AI Pro, Ultra | Gemini 5-hour pool | Antigravity and Gemini CLI | The Gemini app on the web (not reported) |
+| Suno (off by default) | Pro, Premier | Monthly credits | suno.com and the Suno app | — |
 
 Google reports only a rolling 5-hour window for Gemini models, so Gemini has no weekly pace. Claude
 and GPT models used inside Antigravity have their own allowances, listed on the Models view.
+
+Suno's monthly credits expire at the reset, so Suno's pace works the other way round: it turns red
+when credits are going unused, not when you're using them fast. The panel also lists visual
+credits and downloads.
 
 ## Requirements
 
@@ -40,13 +46,20 @@ and GPT models used inside Antigravity have their own allowances, listed on the 
   - Codex: `codex`
   - Gemini: `agy` (Antigravity CLI). If Gemini says *Limits paused*, start `agy` once to refresh
     its sign-in.
+- For Suno: Chromium (or Chrome/Brave) and `openssl`. Suno has no CLI, so the panel's
+  **Sign in to Suno** opens a browser window of the widget's own (a separate profile in
+  `~/.local/state/subscription-usage/profiles/suno`, never your main browser). Sign in there as
+  usual, Google sign-in included, and close the window. The sign-in lasts about a year.
 
-The widget reads the sign-ins those CLIs already keep. It never stores credentials.
+The widget reads the sign-ins those CLIs, or that profile, already keep. It never stores
+passwords; for Suno it caches only the one-hour access token, readable by you alone.
+
+Suno usage comes from the endpoint suno.com itself uses, which is not a public API and may change.
 
 ## Install
 
 ```bash
-omarchy plugin add https://github.com/CodeOfficer/omarchy-agent-usage.git --enable
+omarchy plugin add https://github.com/CodeOfficer/omarchy-subscription-usage.git --enable
 ```
 
 If Omarchy's own Agents widget also shows, you can turn it off with
@@ -59,13 +72,14 @@ Change these in **Setup › Plugins**, or from a terminal:
 | Setting | Default | What it does |
 |---|---|---|
 | `showClaude`, `showCodex`, `showGemini` | `true` | Show or hide a provider. A hidden provider is never queried. |
+| `showSuno` | `false` | Show Suno. Then choose **Sign in to Suno** in the panel. |
 | `barDetail` | `Percent` | `Percent and reset` adds the time until reset to the bar. |
-| `paceTolerancePercent` | `5` | How many points over its prorated share a week can run before it turns red. |
+| `paceTolerancePercent` | `5` | How many points a window can drift from its prorated share before it turns red (over it; for Suno, under it). |
 | `refreshIntervalSec` | `300` | How often to refresh (60–3600). |
 
 ```bash
-omarchy bar set codeofficer.agent-usage showGemini false --json
-omarchy bar set codeofficer.agent-usage barDetail "Percent and reset"
+omarchy bar set codeofficer.subscription-usage showSuno true --json
+omarchy bar set codeofficer.subscription-usage barDetail "Percent and reset"
 ```
 
 ## Use
@@ -88,7 +102,8 @@ the Debug view. It only reads usage; it never spends any of your quota.
 ## Remove
 
 ```bash
-omarchy plugin remove codeofficer.agent-usage
+omarchy plugin remove codeofficer.subscription-usage
+rm -rf ~/.local/state/subscription-usage   # Suno sign-in profile and token, if you used it
 ```
 
 ## Contributing

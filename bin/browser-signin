@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+# Open a sign-in window for a provider that has no CLI sign-in.
+#
+#   browser-signin <provider-id> <https-url>
+#
+# Starts Chromium on a profile of the plugin's own,
+# $XDG_STATE_HOME/subscription-usage/profiles/<provider-id>, so your main
+# browser is never read or touched. Sign in there as on any site (Google
+# sign-in works: this is a normal browser window, not an embedded or
+# automated one). The window stays signed in, and the provider's collector
+# reads the session cookie from the profile. Returns when the window closes.
+#
+# --password-store=basic keeps the profile's cookies readable by the
+# collector without the system keyring; the profile folder is mode 700.
+set -euo pipefail
+
+id=${1:-}
+url=${2:-}
+[[ $id =~ ^[a-z0-9-]{1,32}$ ]] || { echo "usage: browser-signin <provider-id> <https-url>" >&2; exit 2; }
+[[ $url =~ ^https://[A-Za-z0-9./_-]+$ ]] || { echo "browser-signin: url must be https" >&2; exit 2; }
+
+state=${XDG_STATE_HOME:-$HOME/.local/state}/subscription-usage
+profile=$state/profiles/$id
+mkdir -p "$profile"
+chmod 700 "$state" "$state/profiles" "$profile"
+
+browser=""
+for candidate in chromium google-chrome-stable google-chrome brave; do
+  if command -v "$candidate" >/dev/null; then browser=$candidate; break; fi
+done
+[[ -n $browser ]] || { echo "browser-signin: needs Chromium (or Chrome/Brave) installed" >&2; exit 1; }
+
+exec "$browser" --user-data-dir="$profile" --password-store=basic \
+  --no-first-run --no-default-browser-check --class=subscription-usage-signin --app="$url"

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Print Google AI Pro usage for the Agent Usage widget, as one JSON record.
+"""Print Google AI Pro usage for the Subscription Usage widget, as one JSON record.
 
 Omarchy's `omarchy-agent-usage-agy` collector supplies the base record: plan,
 sign-in help, and the local token history. It reads only Google's quota

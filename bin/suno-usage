@@ -1,0 +1,192 @@
+#!/usr/bin/env python3
+"""Print Suno plan usage for the Subscription Usage widget, as one JSON record.
+
+Suno has no public usage API. The suno.com web app reads its balance from
+GET https://suno.com/a/api/billing/info/ with a one-hour bearer token, which
+its sign-in service (Clerk, at auth.suno.com) issues against the long-lived
+`__client` cookie. This reads that cookie from the plugin's own browser
+profile (see browser_session.py; `browser-signin suno https://suno.com`
+creates it), caches the hour-long token, and prints the same record shape as
+the other collectors.
+
+Only the fields the widget uses are printed; account and payment identifiers
+in Suno's answer are dropped. Every value is bounded and validated. With no
+usable sign-in it still exits 0, with signInRequired and help text, so the
+panel can offer Sign in.
+"""
+
+import calendar
+import json
+import os
+import re
+import sys
+import time
+from datetime import datetime, timedelta, timezone
+
+sys.dont_write_bytecode = True
+sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+import browser_session as bs  # noqa: E402
+
+PROVIDER = "suno"
+APP = "https://suno.com"
+AUTH = "https://auth.suno.com"
+BILLING = APP + "/a/api/billing/info/"
+MODEL_ID = re.compile(r"^[A-Za-z0-9._-]{1,80}$")
+ISO = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$")
+
+SIGN_IN_HELP = "Not signed in to Suno. Choose Sign in in the panel, then sign in to suno.com in the window that opens."
+EXPIRED_HELP = "Suno sign-in expired. Choose Sign in in the panel to sign in again."
+
+
+def empty_record():
+  # The same keys every time, so the Debug view's field check stays quiet
+  # whether or not you're signed in.
+  return {
+    "schemaVersion": 1, "id": PROVIDER, "name": "Suno", "plan": "", "tierLabel": "",
+    "limits": [], "credits": {}, "planModels": [], "sourceFields": {},
+    "signInRequired": False, "usageStatusText": "", "authHelpText": "",
+    "limitsFetchedAt": 0, "updatedAt": "",
+  }
+
+
+def whole(value):
+  try:
+    number = int(value)
+  except (TypeError, ValueError):
+    return None
+  return number if 0 <= number <= 10_000_000 else None
+
+
+def iso(value):
+  text = str(value or "")
+  return text if ISO.match(text) else ""
+
+
+def parse_iso(text):
+  return datetime.fromisoformat(text.replace("Z", "+00:00")) if text else None
+
+
+def month_before(moment):
+  year, month = (moment.year, moment.month - 1) if moment.month > 1 else (moment.year - 1, 12)
+  day = min(moment.day, calendar.monthrange(year, month)[1])
+  return moment.replace(year=year, month=month, day=day)
+
+
+def period_start(period, end):
+  if not end:
+    return ""
+  start = end - timedelta(days=1) if period == "day" else month_before(end)
+  return start.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def share(used, total):
+  return round(min(1.0, max(0.0, used / total)), 4) if total else 0.0
+
+
+def field_names(obj):
+  if not isinstance(obj, dict):
+    return []
+  return sorted(k for k in obj.keys() if isinstance(k, str) and len(k) <= 64)[:96]
+
+
+def build_record(info, now):
+  record = empty_record()
+  plan = info.get("plan") if isinstance(info.get("plan"), dict) else {}
+  period = "day" if info.get("period") == "day" else "month"
+  end_text = iso(info.get("period_end") or info.get("renews_on"))
+  end = parse_iso(end_text)
+  monthly = whole(info.get("monthly_limit"))
+  used = whole(info.get("monthly_usage"))
+  left = whole(info.get("total_credits_left"))
+  extra = whole(info.get("credits")) or 0
+  name = str(plan.get("name") or "")[:40]
+
+  limits = []
+  if monthly and used is not None:
+    detail = f"{left:,} of {monthly:,} credits left" if left is not None else f"{used:,} of {monthly:,} credits used"
+    if extra:
+      detail += f" · {extra:,} extra"
+    limits.append({
+      "label": ("Daily" if period == "day" else "Monthly") + " (credits)", "title": "Credits",
+      "percent": share(used, monthly), "resetsAt": end_text, "windowStartsAt": period_start(period, end),
+      "primary": True, "detail": detail,
+    })
+  visuals_total = whole(plan.get("visuals_credits"))
+  visuals_left = whole(info.get("visuals_credits_left"))
+  if visuals_total and visuals_left is not None:
+    limits.append({"label": "Visual credits", "title": "Visual credits", "percent": share(visuals_total - visuals_left, visuals_total),
+                   "resetsAt": end_text, "detail": f"{visuals_left:,} of {visuals_total:,} left"})
+  downloads = info.get("download_usage") if isinstance(info.get("download_usage"), dict) else {}
+  dl_used = whole(downloads.get("current_period_downloads_used"))
+  dl_limit = whole(downloads.get("current_period_downloads_limit"))
+  if dl_limit and dl_used is not None:
+    limits.append({"label": "Downloads", "title": "Downloads", "percent": share(dl_used, dl_limit),
+                   "resetsAt": end_text, "detail": f"{dl_used} of {dl_limit} used"})
+
+  status = ""
+  if info.get("is_paused") is True:
+    status = "Subscription paused"
+  elif info.get("is_past_due") is True:
+    status = "Payment past due"
+  elif info.get("is_active") is False:
+    status = "No active subscription"
+
+  models = info.get("models") if isinstance(info.get("models"), list) else []
+  record.update(
+    plan=name,
+    tierLabel=re.sub(r"\s*Plan$", "", name),
+    limits=limits,
+    credits={"monthlyLimit": monthly, "monthlyUsage": used, "left": left, "extra": extra},
+    planModels=[str(m.get("name")) for m in models[:16] if isinstance(m, dict) and m.get("can_use") is True and MODEL_ID.match(str(m.get("name") or ""))],
+    sourceFields={"billing": field_names(info), "plan": field_names(plan)},
+    usageStatusText=status,
+    limitsFetchedAt=int(now * 1000),
+    updatedAt=datetime.fromtimestamp(now, timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+  )
+  return record
+
+
+def access_token(now, fresh=False):
+  token = None if fresh else bs.cached_token(PROVIDER, now)
+  if token:
+    return token
+  cookie = bs.read_cookie(bs.profile_dir(PROVIDER), "auth.suno.com", "__client")
+  if not cookie:
+    raise bs.SignedOut(SIGN_IN_HELP)
+  try:
+    token = bs.clerk_token(AUTH, APP, cookie)
+  except bs.SignedOut:
+    raise bs.SignedOut(EXPIRED_HELP)
+  bs.store_token(PROVIDER, token)
+  return token
+
+
+def billing(now):
+  for attempt in range(2):
+    token = access_token(now, fresh=attempt > 0)
+    status, body = bs.request("GET", BILLING, {"Authorization": "Bearer " + token, "Origin": APP})
+    if status in (401, 403):
+      bs.forget_token(PROVIDER)
+      continue
+    if status != 200 or not isinstance(body, dict):
+      raise RuntimeError(f"Suno billing answered HTTP {status}")
+    return body
+  raise bs.SignedOut(EXPIRED_HELP)
+
+
+def main():
+  now = time.time()
+  try:
+    record = build_record(billing(now), now)
+  except bs.SignedOut as signed_out:
+    record = empty_record()
+    record.update(signInRequired=True, usageStatusText="Not signed in", authHelpText=str(signed_out) or SIGN_IN_HELP)
+  except Exception as error:  # network, Suno changed its answer, ...
+    record = empty_record()
+    record["usageStatusText"] = "Suno usage unavailable"
+    print(f"suno-usage: {type(error).__name__}: {str(error)[:160]}", file=sys.stderr)
+  print(json.dumps(record))
+
+
+if __name__ == "__main__":
+  main()

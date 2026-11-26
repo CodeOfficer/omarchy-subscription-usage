@@ -10,8 +10,8 @@ import "Model.js" as Model
 
 Panel {
   id: root
-  moduleName: "codeofficer.agent-usage"
-  ipcTarget: "codeofficer.agent-usage"
+  moduleName: "codeofficer.subscription-usage"
+  ipcTarget: "codeofficer.subscription-usage"
   manageIpc: false
 
   property double nowMs: Date.now()
@@ -24,19 +24,17 @@ Panel {
   readonly property color urgent: bar ? bar.urgent : Color.urgent
   readonly property color dim: Qt.darker(foreground, 1.55)
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
-  readonly property bool alarming: shown.some(function(i) { return Model.behindPace(providerAt(i).weekly, nowMs, paceTolerance) })
-  // Providers are looked up by index rather than handed through a
-  // Repeater's modelData: QML turns nested arrays there into list types
-  // that fail Array.isArray, and the cards would lose their charts and lists.
-  readonly property var icons: [Qt.resolvedUrl("claude.svg"), Qt.resolvedUrl("codex.svg"), Qt.resolvedUrl("gemini.svg")]
-  readonly property var tints: [false, true, false]
+  readonly property bool alarming: shown.some(function(id) { return Model.paceAlarm(providerAt(id), nowMs, paceTolerance) })
+  // Providers are looked up by id rather than handed through a Repeater's
+  // modelData: QML turns nested arrays there into list types that fail
+  // Array.isArray, and the cards would lose their charts and lists.
   // Settings from the manifest schema (Setup › Plugins, or `omarchy bar set`).
-  readonly property var shown: [0, 1, 2].filter(function(i) { return service.enabled[i] })
+  readonly property var shown: service.shown
   readonly property real paceTolerance: service.intSetting("paceTolerancePercent", 5, 0, 25) / 100
   readonly property bool barShowsReset: String(service.setting("barDetail", "Percent")) === "Percent and reset"
 
-  function providerAt(index) {
-    return index === 0 ? service.claude : index === 1 ? service.codex : service.gemini
+  function providerAt(id) {
+    return service.record(id)
   }
 
   implicitWidth: usageButton.implicitWidth
@@ -85,25 +83,22 @@ Panel {
     function refresh(): string { root.refresh(); return "ok" }
     function view(index: string): string { root.showView(parseInt(index, 10) - 1); return root.viewNames[root.view] }
     function debug(): string { root.showView(root.view === 2 ? 0 : 2); return root.viewNames[root.view] }
+    function signin(id: string): string { return service.signIn(id) ? "opened" : "not available" }
     function status(): string {
-      return JSON.stringify({
-        refreshing: service.refreshing,
-        claude: service.enabled[0] ? root.providerStatus(service.claude) : null,
-        codex: service.enabled[1] ? root.providerStatus(service.codex) : null,
-        gemini: service.enabled[2] ? root.providerStatus(service.gemini) : null,
-        error: service.lastError
-      })
+      var result = { refreshing: service.refreshing, signingIn: service.signingIn, error: service.lastError }
+      root.shown.forEach(function(id) { result[id] = root.providerStatus(service.record(id)) })
+      return JSON.stringify(result)
     }
   }
 
   function providerStatus(provider) {
-    var weekly = provider ? provider.weekly : null
     var headline = provider ? provider.headline : null
     return {
       window: Model.windowName(headline),
       remaining: headline ? headline.remaining : null,
       resetsAt: headline && Model.started(headline) ? new Date(headline.resetMs).toISOString() : "",
-      behindPace: Model.behindPace(weekly, nowMs, root.paceTolerance),
+      behindPace: Model.paceAlarm(provider, nowMs, root.paceTolerance),
+      signInNeeded: !!provider && provider.signInNeeded === true,
       status: provider ? provider.status : "",
       problems: provider && Array.isArray(provider.warnings) ? provider.warnings : [],
       run: provider && provider.debug ? provider.debug : null
@@ -129,7 +124,7 @@ Panel {
     labelVisible: false
     hasVisualContent: true
     fixedWidth: vertical ? -1 : barContent.implicitWidth + Style.space(16)
-    tooltipText: "Weekly allowance used · click for reset times and details"
+    tooltipText: "Plan usage · click for reset times and details"
     active: root.alarming
     onPressed: function(buttonCode) {
       if (buttonCode === Qt.RightButton || buttonCode === Qt.MiddleButton) root.refresh()
@@ -144,7 +139,7 @@ Panel {
       Repeater {
         model: root.shown
         delegate: Row {
-          required property int modelData
+          required property string modelData
           required property int index
           spacing: Style.space(12)
           anchors.verticalCenter: parent ? parent.verticalCenter : undefined
@@ -160,8 +155,8 @@ Panel {
 
           ProviderChip {
             provider: root.providerAt(modelData)
-            iconSource: root.icons[modelData]
-            tintIcon: root.tints[modelData]
+            iconSource: service.iconOf(modelData)
+            tintIcon: service.tinted(modelData)
           }
         }
       }
@@ -217,7 +212,7 @@ Panel {
 
             Text {
               Layout.fillWidth: true
-              text: "AGENT USAGE"
+              text: "SUBSCRIPTION USAGE"
               color: root.foreground
               font.family: root.fontFamily
               font.pixelSize: Style.font.title
@@ -262,7 +257,7 @@ Panel {
           Repeater {
             model: root.shown
             delegate: Column {
-              required property int modelData
+              required property string modelData
               required property int index
               width: panelContent.width
               spacing: Style.space(12)
@@ -273,24 +268,24 @@ Panel {
                 visible: root.view === 0
                 width: parent.width
                 provider: root.providerAt(modelData)
-                iconSource: root.icons[modelData]
-                tintIcon: root.tints[modelData]
+                iconSource: service.iconOf(modelData)
+                tintIcon: service.tinted(modelData)
               }
 
               ModelsCard {
                 visible: root.view === 1
                 width: parent.width
                 provider: root.providerAt(modelData)
-                iconSource: root.icons[modelData]
-                tintIcon: root.tints[modelData]
+                iconSource: service.iconOf(modelData)
+                tintIcon: service.tinted(modelData)
               }
 
               ChecksCard {
                 visible: root.view === 2
                 width: parent.width
                 provider: root.providerAt(modelData)
-                iconSource: root.icons[modelData]
-                tintIcon: root.tints[modelData]
+                iconSource: service.iconOf(modelData)
+                tintIcon: service.tinted(modelData)
               }
             }
           }
@@ -352,9 +347,8 @@ Panel {
     required property var provider
     property url iconSource: ""
     property bool tintIcon: false
-    readonly property var weekly: provider ? provider.weekly : null
     readonly property var headline: provider ? provider.headline : null
-    readonly property bool behind: Model.behindPace(weekly, root.nowMs, root.paceTolerance)
+    readonly property bool behind: Model.paceAlarm(provider, root.nowMs, root.paceTolerance)
     spacing: Style.space(5)
     anchors.verticalCenter: parent ? parent.verticalCenter : undefined
 
@@ -469,9 +463,9 @@ Panel {
     required property var provider
     property url iconSource: ""
     property bool tintIcon: false
-    readonly property var weekly: provider ? provider.weekly : null
+    readonly property var pace: provider ? provider.pace : null
     readonly property var headline: provider ? provider.headline : null
-    readonly property bool behind: Model.behindPace(weekly, root.nowMs, root.paceTolerance)
+    readonly property bool behind: Model.paceAlarm(provider, root.nowMs, root.paceTolerance)
     spacing: Style.space(8)
 
     CardHeader {
@@ -500,11 +494,40 @@ Panel {
     }
 
     InfoRow {
-      visible: !!card.weekly
+      visible: !!card.pace
       width: parent.width
-      label: Model.paceText(card.weekly, root.nowMs, root.paceTolerance)
+      label: Model.paceText(card.pace, root.nowMs, root.paceTolerance, card.provider.paceMode)
       labelColor: card.behind ? root.urgent : root.dim
-      value: Model.expectedText(card.weekly, root.nowMs)
+      value: Model.expectedText(card.pace, root.nowMs)
+    }
+
+    Text {
+      visible: !!card.headline && card.headline.detail !== ""
+      width: parent.width
+      textFormat: Text.PlainText
+      text: card.headline ? card.headline.detail : ""
+      color: root.dim
+      font.family: root.fontFamily
+      font.pixelSize: Style.font.caption
+    }
+
+    // No CLI keeps this provider's sign-in: open the plugin's own browser
+    // window for it (bin/browser-signin).
+    Text {
+      visible: card.provider && card.provider.signInNeeded === true && service.canSignIn(card.provider.id)
+      textFormat: Text.PlainText
+      text: service.signingIn ? "Signing in… close the window when done" : "→ Sign in to " + card.provider.name
+      color: root.foreground
+      font.family: root.fontFamily
+      font.pixelSize: Style.font.body
+      font.bold: true
+      font.underline: !service.signingIn
+
+      MouseArea {
+        anchors.fill: parent
+        cursorShape: Qt.PointingHandCursor
+        onClicked: service.signIn(card.provider.id)
+      }
     }
 
     Column {
@@ -595,6 +618,8 @@ Panel {
     readonly property var scoped: provider && Array.isArray(provider.limits)
       ? provider.limits.filter(function(l) { return l.scoped }) : []
     readonly property var today: provider && Array.isArray(provider.todayModels) ? provider.todayModels : []
+    readonly property var planModels: provider && Array.isArray(provider.planModels) ? provider.planModels : []
+    readonly property bool tracksTokens: !!provider && provider.tracksTokens !== false
     spacing: Style.space(8)
 
     CardHeader {
@@ -658,6 +683,23 @@ Panel {
     }
 
     SectionTitle {
+      visible: models.planModels.length > 0
+      text: "MODELS ON THIS PLAN"
+    }
+
+    Text {
+      visible: models.planModels.length > 0
+      width: models.width
+      textFormat: Text.PlainText
+      text: models.planModels.join(", ")
+      color: root.foreground
+      font.family: root.fontFamily
+      font.pixelSize: Style.font.caption
+      wrapMode: Text.WordWrap
+    }
+
+    SectionTitle {
+      visible: models.tracksTokens
       text: "TODAY BY MODEL"
     }
 
@@ -673,7 +715,7 @@ Panel {
     }
 
     Text {
-      visible: models.today.length === 0
+      visible: models.tracksTokens && models.today.length === 0
       text: "No tokens today"
       color: root.dim
       font.family: root.fontFamily

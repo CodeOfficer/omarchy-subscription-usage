@@ -1,32 +1,49 @@
 import QtQuick
+import QtQml
 import Quickshell
 import Quickshell.Io
 import "Model.js" as Model
 
+// Runs one collector per enabled provider (Model.PROVIDERS) and keeps the
+// provider records the panel draws, keyed by provider id.
 Item {
   id: root
 
   property var settings: ({})
-  property var claude: ({ id: "claude", name: "Claude", weekly: null, limits: [], recentDays: [], status: "Loading…" })
-  property var codex: ({ id: "codex", name: "Codex", weekly: null, limits: [], recentDays: [], status: "Loading…" })
-  property var gemini: ({ id: "gemini", name: "Gemini", weekly: null, limits: [], recentDays: [], status: "Loading…" })
+  property var records: initialRecords()
   property bool refreshing: false
   property string lastError: ""
   property date lastUpdated: new Date(0)
   property double _startedAt: 0
   property int _pending: 0
-  property string _claudeOutput: ""
-  property string _claudeError: ""
-  property string _codexOutput: ""
-  property string _codexError: ""
-  property string _geminiOutput: ""
-  property string _geminiError: ""
 
-  readonly property string geminiCollector: String(Qt.resolvedUrl("bin/gemini-usage")).replace(/^file:\/\//, "")
-  // Which providers to show (manifest settings showClaude/showCodex/showGemini),
-  // in bar order. A hidden provider's collector never runs.
-  readonly property var enabled: [boolSetting("showClaude", true), boolSetting("showCodex", true), boolSetting("showGemini", true)]
+  readonly property var providers: Model.PROVIDERS
+  readonly property string binDir: String(Qt.resolvedUrl("bin")).replace(/^file:\/\//, "")
+  // Ids of the providers to show, in bar order (settings showClaude, showSuno, …).
+  // A hidden provider's collector never runs.
+  readonly property var shown: providers.filter(function(p) { return boolSetting(p.setting, p.defaultOn) })
+    .map(function(p) { return p.id })
   readonly property int refreshIntervalSec: intSetting("refreshIntervalSec", 300, 60, 3600)
+  readonly property bool signingIn: signInProcess.running
+  property string signInProvider: ""
+
+  function initialRecords() {
+    var map = {}
+    Model.PROVIDERS.forEach(function(p) { map[p.id] = Model.placeholder(p) })
+    return map
+  }
+
+  function record(id) { return records[id] || null }
+  function config(id) { return Model.providerConfig(id) }
+  function iconOf(id) { var c = config(id); return c ? Qt.resolvedUrl(c.icon) : "" }
+  function tinted(id) { var c = config(id); return !!c && c.tint === true }
+  function canSignIn(id) { var c = config(id); return !!c && !!c.signIn }
+
+  function setRecord(id, value) {
+    var next = Object.assign({}, records)
+    next[id] = value
+    records = next
+  }
 
   function setting(name, fallback) {
     var value = settings ? settings[name] : undefined
@@ -49,26 +66,25 @@ Item {
     return text.length > 180 ? text.substring(0, 177) + "…" : text
   }
 
+  function runnerFor(id) {
+    for (var i = 0; i < providers.length; i++) if (providers[i].id === id) return runners.objectAt(i)
+    return null
+  }
+
   function refresh() {
-    if (refreshing || claudeProcess.running || codexProcess.running || geminiProcess.running) return
-    var runs = [claudeProcess, codexProcess, geminiProcess].filter(function(_, i) { return enabled[i] })
+    if (refreshing) return
+    var runs = shown.map(runnerFor).filter(function(r) { return r && !r.running })
     if (runs.length === 0) return
     refreshing = true
     _startedAt = Date.now()
     lastError = ""
     _pending = runs.length
-    _claudeOutput = ""
-    _claudeError = ""
-    _codexOutput = ""
-    _codexError = ""
-    _geminiOutput = ""
-    _geminiError = ""
-    claudeProcess.command = ["omarchy-agent-usage-claude", "--limits-only"]
-    codexProcess.command = ["omarchy-agent-usage-codex", "--limits-only"]
-    // Gemini usage comes from this plugin's own collector: Omarchy's
-    // Antigravity record plus Google's per-model quota (see bin/gemini-usage).
-    geminiProcess.command = [root.geminiCollector]
-    for (var i = 0; i < runs.length; i++) runs[i].running = true
+    runs.forEach(function(r) {
+      r.out = ""
+      r.err = ""
+      r.command = Model.commandOf(r.provider, root.binDir)
+      r.running = true
+    })
   }
 
   function finishOne() {
@@ -77,6 +93,17 @@ Item {
       refreshing = false
       lastUpdated = new Date()
     }
+  }
+
+  // Opens the provider's sign-in window (bin/browser-signin); refreshes when
+  // it closes, so the panel shows the new sign-in at once.
+  function signIn(id) {
+    var c = config(id)
+    if (!c || !c.signIn || signInProcess.running) return false
+    signInProvider = id
+    signInProcess.command = [binDir + "/browser-signin", c.id, c.signIn.url]
+    signInProcess.running = true
+    return true
   }
 
   // Turns one collector run into the provider record the panel draws. A
@@ -113,69 +140,43 @@ Item {
     onTriggered: root.refresh()
   }
 
-  Process {
-    id: claudeProcess
-    running: false
-    command: []
-    stdout: StdioCollector {
-      id: claudeStdout
-      waitForEnd: true
-      onStreamFinished: root._claudeOutput = text
-    }
-    stderr: StdioCollector {
-      id: claudeStderr
-      waitForEnd: true
-      onStreamFinished: root._claudeError = text
-    }
-    onExited: function(exitCode) {
-      root.claude = root.collected(root.claude, "claude", "Claude", claudeProcess.command, exitCode,
-        String(claudeStdout.text || root._claudeOutput || ""),
-        String(claudeStderr.text || root._claudeError || ""))
-      root.finishOne()
+  // One collector process per provider in the table.
+  Instantiator {
+    id: runners
+    model: root.providers.length
+
+    delegate: Process {
+      id: runner
+      readonly property var provider: root.providers[index]
+      property string out: ""
+      property string err: ""
+      running: false
+      command: []
+      stdout: StdioCollector {
+        id: runnerStdout
+        waitForEnd: true
+        onStreamFinished: runner.out = text
+      }
+      stderr: StdioCollector {
+        id: runnerStderr
+        waitForEnd: true
+        onStreamFinished: runner.err = text
+      }
+      onExited: function(exitCode) {
+        root.setRecord(runner.provider.id, root.collected(root.record(runner.provider.id), runner.provider.id, runner.provider.name,
+          runner.command, exitCode, String(runnerStdout.text || runner.out || ""), String(runnerStderr.text || runner.err || "")))
+        root.finishOne()
+      }
     }
   }
 
   Process {
-    id: codexProcess
+    id: signInProcess
     running: false
     command: []
-    stdout: StdioCollector {
-      id: codexStdout
-      waitForEnd: true
-      onStreamFinished: root._codexOutput = text
-    }
-    stderr: StdioCollector {
-      id: codexStderr
-      waitForEnd: true
-      onStreamFinished: root._codexError = text
-    }
-    onExited: function(exitCode) {
-      root.codex = root.collected(root.codex, "codex", "Codex", codexProcess.command, exitCode,
-        String(codexStdout.text || root._codexOutput || ""),
-        String(codexStderr.text || root._codexError || ""))
-      root.finishOne()
-    }
-  }
-
-  Process {
-    id: geminiProcess
-    running: false
-    command: []
-    stdout: StdioCollector {
-      id: geminiStdout
-      waitForEnd: true
-      onStreamFinished: root._geminiOutput = text
-    }
-    stderr: StdioCollector {
-      id: geminiStderr
-      waitForEnd: true
-      onStreamFinished: root._geminiError = text
-    }
-    onExited: function(exitCode) {
-      root.gemini = root.collected(root.gemini, "gemini", "Gemini", geminiProcess.command, exitCode,
-        String(geminiStdout.text || root._geminiOutput || ""),
-        String(geminiStderr.text || root._geminiError || ""))
-      root.finishOne()
+    onExited: function() {
+      root.signInProvider = ""
+      root.refresh()
     }
   }
 }

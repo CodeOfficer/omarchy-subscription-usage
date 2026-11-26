@@ -7,6 +7,36 @@ var WEEK_MS = 7 * 24 * 60 * 60 * 1000
 // behind pace at once: almost none of the week has passed, so any use is over.
 var PACE_TOLERANCE = 0.05
 
+// Every provider the widget knows, in bar order. Adding one is a row here, a
+// collector that prints the shared record shape, an icon, and a manifest
+// setting (`setting`, default `defaultOn`).
+//   command  an Omarchy collector on PATH;  bin  one of this plugin's bin/ scripts
+//   pace     "over": warn when use runs ahead of the window (a cap you can hit)
+//            "under": warn when credits go unused (they expire at the reset)
+//   signIn   { url }: no CLI keeps a sign-in, so the panel offers a Sign in
+//            button that opens `url` in a browser profile of the plugin's own
+var PROVIDERS = [
+  { id: "claude", name: "Claude", setting: "showClaude", defaultOn: true, command: ["omarchy-agent-usage-claude", "--limits-only"], icon: "claude.svg", tint: false, pace: "over" },
+  { id: "codex", name: "Codex", setting: "showCodex", defaultOn: true, command: ["omarchy-agent-usage-codex", "--limits-only"], icon: "codex.svg", tint: true, pace: "over" },
+  { id: "gemini", name: "Gemini", setting: "showGemini", defaultOn: true, bin: "gemini-usage", icon: "gemini.svg", tint: false, pace: "over" },
+  { id: "suno", name: "Suno", setting: "showSuno", defaultOn: false, bin: "suno-usage", icon: "suno.svg", tint: true, pace: "under", signIn: { url: "https://suno.com" } }
+]
+
+function providerConfig(id) {
+  for (var i = 0; i < PROVIDERS.length; i++) if (PROVIDERS[i].id === id) return PROVIDERS[i]
+  return null
+}
+
+// The command that collects a provider's record; binDir is this plugin's bin/.
+function commandOf(config, binDir) {
+  return config.bin ? [String(binDir) + "/" + config.bin] : config.command.slice()
+}
+
+// What the panel shows before a provider's first answer.
+function placeholder(config) {
+  return { id: config.id, name: config.name, weekly: null, pace: null, headline: null, limits: [], pools: [], recentDays: [], status: "Loading…" }
+}
+
 // What each provider's record looked like when the widget was last checked
 // against it. The debug view and the integration test compare live records
 // with this to spot new or dropped fields and models. Rewrite it with
@@ -184,7 +214,15 @@ function normalizeLimit(limit, nowMs) {
   if (!isFinite(resetMs)) resetMs = 0
   var remaining = 1 - used
   var timeRemaining = resetMs > 0 ? Math.max(0, resetMs - nowMs) : 0
+  // How long the window runs, for pace: a weekly label means 7 days; a
+  // billing period says when it began (windowStartsAt).
+  var startMs = Date.parse(String(limit.windowStartsAt || ""))
+  var windowMs = isFinite(startMs) && resetMs > startMs ? resetMs - startMs
+    : String(limit.label || "").toLowerCase().indexOf("weekly") === 0 ? WEEK_MS : 0
   return {
+    windowMs: windowMs,
+    // A line of plain detail from the collector ("2,500 of 2,500 credits left").
+    detail: String(limit.detail || "").substring(0, 80),
     label: String(limit.title || limit.label || "Limit"),
     used: used,
     remaining: remaining,
@@ -322,6 +360,17 @@ function recordChecks(raw, provider, providerId, baseline) {
   if (providerId === "gemini") {
     var hasGemini = provider.pools.some(function(p) { return p.family === "gemini" })
     checks.push(check("Google reports a Gemini pool", hasGemini, "no Gemini models in Google's per-model quota"))
+  } else if (providerId === "suno") {
+    checks.push(check("Billing period reported", !!provider.pace, "no period end, so no pace"))
+    // Suno sends the balance and its parts separately; if they stop adding
+    // up, its credits work differently now (daily credits after a used-up
+    // month, say) and the percent may mislead.
+    var c = raw.credits && typeof raw.credits === "object" ? raw.credits : null
+    if (c && number(c.monthlyLimit, 0) > 0) {
+      var expected = number(c.monthlyLimit, 0) - number(c.monthlyUsage, 0) + number(c.extra, 0)
+      checks.push(check("Credits add up", number(c.left, -1) === expected,
+        "left " + c.left + ", expected " + expected + " (limit − used + extra)"))
+    }
   } else {
     checks.push(check("Weekly window reported", !!provider.weekly, "no weekly limit, so no pace"))
   }
@@ -343,16 +392,30 @@ function recordChecks(raw, provider, providerId, baseline) {
     provider.pools.forEach(function(p) { models = models.concat(p.models) })
     var modelCheck = changeCheck("Model list unchanged", models.sort(), base.models)
     if (modelCheck) checks.push(modelCheck)
-    var google = raw.googleFields || {}
-    var before = base.googleFields || {}
-    var googleChanges = []
-    Object.keys(before).forEach(function(key) {
-      var diff = setDiff(Array.isArray(google[key]) ? google[key] : [], before[key])
-      if (diff.added.length || diff.removed.length) googleChanges.push(key + " " + diffText(diff))
-    })
-    if (Object.keys(before).length) checks.push(check("Google's fields unchanged", googleChanges.length === 0, googleChanges.join("; "), true))
   }
+  var sourceCheck = sourceFieldsCheck(raw, providerId, base)
+  if (sourceCheck) checks.push(sourceCheck)
   return checks
+}
+
+// The field names the vendor's own service answered with, compared with the
+// baseline. Gemini's collector calls them googleFields; others sourceFields.
+function sourceFieldsKey(providerId) {
+  return providerId === "gemini" ? "googleFields" : "sourceFields"
+}
+
+function sourceFieldsCheck(raw, providerId, base) {
+  var key = sourceFieldsKey(providerId)
+  var now = raw[key] && typeof raw[key] === "object" ? raw[key] : {}
+  var before = base[key] || {}
+  if (Object.keys(before).length === 0) return null
+  var changes = []
+  Object.keys(before).forEach(function(part) {
+    var diff = setDiff(Array.isArray(now[part]) ? now[part] : [], before[part])
+    if (diff.added.length || diff.removed.length) changes.push(part + " " + diffText(diff))
+  })
+  var owner = providerId === "gemini" ? "Google" : (providerConfig(providerId) || { name: providerId }).name
+  return check(owner + "'s fields unchanged", changes.length === 0, changes.join("; "), true)
 }
 
 // The checks that didn't pass, as short sentences (IPC status, tests).
@@ -377,6 +440,9 @@ function parseProvider(stdout, providerId, nowMs, baseline) {
       normalized.push(item)
       if (item.primary && !primary) primary = item
     }
+    var headline = weekly || primary || normalized[0] || null
+    var config = providerConfig(providerId)
+    var planModels = Array.isArray(raw.planModels) ? raw.planModels.slice(0, 16).map(String).filter(function(m) { return MODEL_ID.test(m) }) : []
     var provider = {
       id: String(providerId || raw.id || ""),
       name: String(raw.name || providerId || ""),
@@ -386,9 +452,18 @@ function parseProvider(stdout, providerId, nowMs, baseline) {
       weekly: weekly,
       // The number the bar shows: the weekly window when there is one,
       // else the limit the collector marks as the plan's own.
-      headline: weekly || primary || normalized[0] || null,
+      headline: headline,
+      // The window pace is measured against: the week, else the headline
+      // when it says how long it runs (Suno's billing month).
+      pace: weekly || (headline && headline.windowMs > 0 ? headline : null),
+      paceMode: config && config.pace === "under" ? "under" : "over",
+      // The collector found no usable sign-in; the panel offers Sign in.
+      signInNeeded: raw.signInRequired === true,
       limits: normalized,
       pools: parsePools(raw.quotaPools, nowMs),
+      planModels: planModels,
+      // Only agent CLIs count tokens; others have no "today by model".
+      tracksTokens: !!raw.todayTokensByModel && typeof raw.todayTokensByModel === "object",
       todayModels: parseModelTokens(raw.todayTokensByModel),
       recentDays: Array.isArray(raw.recentDays) ? raw.recentDays : [],
       updatedAt: String(raw.updatedAt || ""),
@@ -413,16 +488,20 @@ function baselineOf(stdout, providerId) {
     var models = []
     parsePools(raw.quotaPools, Date.now()).forEach(function(p) { models = models.concat(p.models) })
     entry.models = models.sort()
-    entry.googleFields = raw.googleFields || {}
   }
+  var key = sourceFieldsKey(providerId)
+  if (raw[key] && typeof raw[key] === "object") entry[key] = raw[key]
   return entry
 }
 
 // ---- Pace ---------------------------------------------------------------
 
+// The share of the window still to come: what would be left at an even pace.
+// `weekly` is any paced window; its length is windowMs (a week by default).
 function expectedRemaining(weekly, nowMs) {
   if (!weekly || weekly.resetMs <= 0) return 0
-  return clamp((weekly.resetMs - nowMs) / WEEK_MS, 0, 1)
+  var length = weekly.windowMs > 0 ? weekly.windowMs : WEEK_MS
+  return clamp((weekly.resetMs - nowMs) / length, 0, 1)
 }
 
 function paceDifference(weekly, nowMs) {
@@ -438,12 +517,34 @@ function behindPace(weekly, nowMs, tolerance) {
   return paceDifference(weekly, nowMs) < -allowed
 }
 
-function paceText(weekly, nowMs, tolerance) {
+function allowedDrift(tolerance) {
+  return tolerance === undefined ? PACE_TOLERANCE : clamp(number(tolerance, PACE_TOLERANCE), 0, 1)
+}
+
+// Credits that expire at the reset: unused share running more than the
+// tolerance over what an even pace would have left.
+function wastingPace(limit, nowMs, tolerance) {
+  if (!limit || !started(limit)) return false
+  return paceDifference(limit, nowMs) > allowedDrift(tolerance)
+}
+
+// Whether a provider should turn red: over pace for a cap you can hit,
+// under pace for credits that expire.
+function paceAlarm(provider, nowMs, tolerance) {
+  if (!provider || !provider.pace) return false
+  return provider.paceMode === "under" ? wastingPace(provider.pace, nowMs, tolerance) : behindPace(provider.pace, nowMs, tolerance)
+}
+
+function paceText(weekly, nowMs, tolerance, mode) {
   if (!weekly) return "No weekly limit"
   if (!started(weekly)) return "Window not started"
   var difference = paceDifference(weekly, nowMs)
   var points = Math.round(Math.abs(difference) * 100)
   if (points === 0) return "On pace"
+  if (mode === "under") {
+    if (difference < 0) return points + "% ahead of pace"
+    return wastingPace(weekly, nowMs, tolerance) ? points + "% unused vs pace" : "Near pace · " + points + "% unused"
+  }
   if (difference > 0) return points + "% ahead of pace"
   return behindPace(weekly, nowMs, tolerance) ? points + "% behind pace" : "Near pace · " + points + "% over"
 }
@@ -491,6 +592,7 @@ function poolText(pool, nowMs) {
 function windowName(limit) {
   var full = String(limit ? (limit.rawLabel || limit.label) : "")
   if (full.toLowerCase().indexOf("weekly") === 0) return "weekly"
+  if (full.toLowerCase().indexOf("monthly") === 0) return "monthly"
   var match = /\(([^)]+)\)/.exec(full)
   return match ? match[1] : ""
 }
@@ -498,7 +600,7 @@ function windowName(limit) {
 function headlineText(limit, nowMs) {
   if (!limit) return ""
   var window = windowName(limit)
-  return percent(limit.used) + (window && window !== "weekly" ? " of " + window : "") + " used · " + resetText(limit, nowMs)
+  return percent(limit.used) + (window && window !== "weekly" && window !== "monthly" ? " of " + window : "") + " used · " + resetText(limit, nowMs)
 }
 
 function expectedText(weekly, nowMs) {
@@ -543,6 +645,12 @@ var exportsObject = {
   WEEK_MS: WEEK_MS,
   PACE_TOLERANCE: PACE_TOLERANCE,
   BASELINE: BASELINE,
+  PROVIDERS: PROVIDERS,
+  providerConfig: providerConfig,
+  commandOf: commandOf,
+  placeholder: placeholder,
+  wastingPace: wastingPace,
+  paceAlarm: paceAlarm,
   toArray: toArray,
   findWeekly: findWeekly,
   normalizeLimit: normalizeLimit,

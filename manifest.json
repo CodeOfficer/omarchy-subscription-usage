@@ -1,11 +1,11 @@
 {
   "schemaVersion": 1,
-  "id": "codeofficer.agent-usage",
-  "name": "Agent Usage",
-  "version": "0.2.0",
+  "id": "codeofficer.subscription-usage",
+  "name": "Subscription Usage",
+  "version": "0.3.0",
   "author": "CodeOfficer (fork of Rob Zolkos)",
   "license": "MIT",
-  "description": "Weekly Claude, Codex and Gemini usage in the Omarchy bar, with reset countdowns and prorated pace in the panel.",
+  "description": "How much of each AI subscription you have used (Claude, Codex, Gemini, optionally Suno) in the Omarchy bar, with reset countdowns and pace.",
   "kinds": [
     "bar-widget"
   ],
@@ -13,14 +13,16 @@
     "barWidget": "Panel.qml"
   },
   "barWidget": {
-    "displayName": "Agent Usage",
-    "description": "Claude, Codex and Gemini weekly usage at a glance.",
+    "displayName": "Subscription Usage",
+    "description": "Claude, Codex, Gemini and Suno plan usage at a glance.",
     "category": "AI",
     "aliases": [
+      "subscription-usage",
       "agent-usage",
       "claude-usage",
       "codex-usage",
-      "gemini-usage"
+      "gemini-usage",
+      "suno-usage"
     ],
     "allowMultiple": false,
     "defaultSection": "right",
@@ -29,6 +31,7 @@
       "showClaude": true,
       "showCodex": true,
       "showGemini": true,
+      "showSuno": false,
       "barDetail": "Percent",
       "paceTolerancePercent": 5
     },
@@ -64,6 +67,13 @@
         "description": "Google AI Pro/Ultra Gemini quota, read with the sign-in the Antigravity CLI (agy) keeps."
       },
       {
+        "key": "showSuno",
+        "type": "boolean",
+        "label": "Show Suno",
+        "defaultValue": false,
+        "description": "Suno Pro/Premier monthly credits. Off by default; after turning it on, choose Sign in in the panel to sign in to suno.com in a browser window of the widget's own."
+      },
+      {
         "key": "barDetail",
         "type": "enum",
         "label": "Bar detail",
@@ -82,7 +92,7 @@
         "max": 25,
         "step": 1,
         "defaultValue": 5,
-        "description": "How far over its prorated share a weekly window can run before it turns red."
+        "description": "How far a window can drift from its prorated share before it turns red: over it for Claude, Codex and Gemini, under it (credits left to expire) for Suno."
       }
     ]
   }

@@ -22,7 +22,7 @@ const manifest = JSON.parse(fs.readFileSync(path.join(root, "manifest.json"), "u
 
 // The widget's settings as the shell sees them: manifest defaults, then this
 // machine's bar entry in ~/.config/omarchy/shell.json. Providers switched off
-// there (showGemini: false, say) are skipped here too.
+// there (showGemini: false, say) are skipped here too; Suno only when on.
 function widgetSettings() {
   const settings = Object.assign({}, manifest.barWidget.defaults);
   try {
@@ -35,11 +35,10 @@ function widgetSettings() {
 }
 
 const settings = widgetSettings();
-const providers = [
-  { id: "claude", setting: "showClaude", command: ["omarchy-agent-usage-claude", "--limits-only"] },
-  { id: "codex", setting: "showCodex", command: ["omarchy-agent-usage-codex", "--limits-only"] },
-  { id: "gemini", setting: "showGemini", command: [path.join(root, "bin", "gemini-usage")] },
-].filter((p) => settings[p.setting] !== false && settings[p.setting] !== "false");
+// The widget's own provider table; a provider is checked when it is shown.
+const providers = M.PROVIDERS
+  .filter((p) => { const v = settings[p.setting] ?? p.defaultOn; return v === true || v === "true"; })
+  .map((p) => ({ id: p.id, command: M.commandOf(p, path.join(root, "bin")) }));
 
 function run(command) {
   return new Promise((resolve) => {
@@ -52,7 +51,7 @@ function run(command) {
 
 function liveStatus() {
   return new Promise((resolve) => {
-    execFile("omarchy-shell", ["codeofficer.agent-usage", "status"], { timeout: 15000 }, (error, stdout) => {
+    execFile("omarchy-shell", [manifest.id, "status"], { timeout: 15000 }, (error, stdout) => {
       try { resolve(error ? null : JSON.parse(stdout)); } catch { resolve(null); }
     });
   });
