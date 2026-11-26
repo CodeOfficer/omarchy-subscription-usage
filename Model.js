@@ -2,9 +2,9 @@
 
 var WEEK_MS = 7 * 24 * 60 * 60 * 1000
 
-// How far over the prorated pace a week can run before it counts as behind.
-// Without it, a week that starts with your first prompt (Codex) reads as
-// behind pace at once: almost none of the week has passed, so any use is over.
+// How far use can run ahead of the time gone before it turns red. Without
+// it, a week that starts with your first prompt (Codex) would be red at
+// once: almost none of the week has gone, so any use is ahead of it.
 var PACE_TOLERANCE = 0.05
 
 // Every provider the widget knows, in bar order. Adding one is a row here, a
@@ -640,14 +640,26 @@ function paceAlarm(provider, nowMs, tolerance) {
   return !!provider && behindPace(provider.pace, nowMs, tolerance)
 }
 
-function paceText(weekly, nowMs, tolerance) {
-  if (!weekly) return "No weekly limit"
-  if (!started(weekly)) return "Window not started"
-  var difference = paceDifference(weekly, nowMs)
-  var points = Math.round(Math.abs(difference) * 100)
-  if (points === 0) return "On pace"
-  if (difference > 0) return points + "% ahead of pace"
-  return behindPace(weekly, nowMs, tolerance) ? points + "% behind pace" : "Near pace · " + points + "% over"
+// The period a limit runs over, as a word people use: week, month, day.
+function periodWord(limit) {
+  var window = windowName(limit)
+  if (window === "weekly") return "week"
+  if (window === "monthly") return "month"
+  return /^daily/i.test(String(limit ? (limit.rawLabel || limit.label) : "")) ? "day" : "window"
+}
+
+// The share of the period that has gone by: what the panel sets use against.
+function timeGone(limit, nowMs) {
+  return started(limit) ? 1 - expectedRemaining(limit, nowMs) : 0
+}
+
+// "96% of the week gone"; red in the panel when use runs further ahead of
+// it than the tolerance.
+function timeGoneText(limit, nowMs) {
+  if (!limit) return ""
+  var word = periodWord(limit)
+  if (!started(limit)) return word.charAt(0).toUpperCase() + word.substring(1) + " not started"
+  return percent(timeGone(limit, nowMs)) + " of the " + word + " gone"
 }
 
 // ---- Text ---------------------------------------------------------------
@@ -702,11 +714,6 @@ function headlineText(limit, nowMs) {
   if (!limit) return ""
   var window = windowName(limit)
   return percent(limit.used) + (window && window !== "weekly" && window !== "monthly" ? " of " + window : "") + " used · " + resetText(limit, nowMs)
-}
-
-function expectedText(weekly, nowMs) {
-  if (!started(weekly)) return "Expected —"
-  return "Expected " + percent(1 - expectedRemaining(weekly, nowMs)) + " used"
 }
 
 function dayTokens(day) {
@@ -765,7 +772,9 @@ var exportsObject = {
   expectedRemaining: expectedRemaining,
   behindPace: behindPace,
   paceDifference: paceDifference,
-  paceText: paceText,
+  periodWord: periodWord,
+  timeGone: timeGone,
+  timeGoneText: timeGoneText,
   percent: percent,
   countdown: countdown,
   started: started,
@@ -774,7 +783,6 @@ var exportsObject = {
   poolText: poolText,
   windowName: windowName,
   headlineText: headlineText,
-  expectedText: expectedText,
   dayTokens: dayTokens,
   recentTotal: recentTotal,
   recentPeak: recentPeak,

@@ -494,14 +494,30 @@ Panel {
         radius: parent.radius
         color: card.behind ? root.urgent : root.foreground
       }
+
+      // Where the time gone stands on the same scale: use left of the
+      // mark is behind time, right of it ahead.
+      Rectangle {
+        visible: !!card.pace && Model.started(card.pace)
+        x: Math.round(parent.width * Model.timeGone(card.pace, root.nowMs)) - width / 2
+        anchors.verticalCenter: parent.verticalCenter
+        width: Style.space(2)
+        height: parent.height + Style.space(6)
+        radius: width / 2
+        color: root.foreground
+        opacity: 0.85
+      }
     }
 
     InfoRow {
       visible: !!card.pace
       width: parent.width
-      label: Model.paceText(card.pace, root.nowMs, root.paceTolerance)
+      // Two facts side by side: how much of the period has gone, how much
+      // is used. Red when use runs ahead of time by more than the tolerance.
+      label: Model.timeGoneText(card.pace, root.nowMs)
       labelColor: card.behind ? root.urgent : root.dim
-      value: Model.expectedText(card.pace, root.nowMs)
+      value: Model.percent(card.pace ? card.pace.used : 0) + " used"
+      valueColor: card.behind ? root.urgent : root.dim
     }
 
     Text {

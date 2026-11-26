@@ -92,7 +92,7 @@
         "max": 25,
         "step": 1,
         "defaultValue": 5,
-        "description": "How far over its prorated share a weekly or monthly window can run before it turns red."
+        "description": "How many points use can run ahead of the share of the week or month gone before it turns red."
       }
     ]
   }

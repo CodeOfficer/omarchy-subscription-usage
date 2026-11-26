@@ -17,8 +17,8 @@ test("window without a reset time reads as not started", () => {
   const g = M.parseProvider(JSON.stringify({ limits: [{ label: "Weekly (7-day)", percent: 0, resetsAt: "" }] }), "codex", now, null);
   assert.strictEqual(M.started(g.provider.weekly), false);
   assert.strictEqual(M.resetText(g.provider.weekly, now), "window not started");
-  assert.strictEqual(M.paceText(g.provider.weekly, now), "Window not started");
-  assert.strictEqual(M.expectedText(g.provider.weekly, now), "Expected —");
+  assert.strictEqual(M.timeGoneText(g.provider.weekly, now), "Week not started");
+  assert.strictEqual(M.timeGone(g.provider.weekly, now), 0);
   assert.strictEqual(M.behindPace(g.provider.weekly, now), false);
 });
 
@@ -26,7 +26,7 @@ test("Claude keeps the weekly window as its headline", () => {
   const c = M.parseProvider(JSON.stringify({ limits: [{ label: "Weekly (7-day)", percent: 0.5, resetsAt: "2026-11-29T12:00:00Z" }] }), "claude", now, null);
   assert.strictEqual(c.provider.headline, c.provider.weekly);
   assert.strictEqual(M.headlineText(c.provider.headline, now), "50% used · resets in 3d 0h");
-  assert.strictEqual(M.expectedText(c.provider.weekly, now), "Expected 57% used");
+  assert.strictEqual(M.timeGoneText(c.provider.weekly, now), "57% of the week gone");
   assert.deepStrictEqual(failing(c.provider), []);
 });
 
@@ -34,18 +34,15 @@ test("pace tolerance: a week that just started is not behind for a little use", 
   const reset = new Date(now + 7 * 24 * HOUR - HOUR).toISOString(); // 1 hour into the week
   const record = (used) => M.parseProvider(JSON.stringify({ limits: [{ label: "Weekly (7-day)", percent: used, resetsAt: reset }] }), "codex", now, null).provider.weekly;
   assert.strictEqual(M.behindPace(record(0.01), now), false);
-  assert.strictEqual(M.paceText(record(0.01), now), "On pace");
-  assert.strictEqual(M.paceText(record(0.02), now), "Near pace · 1% over");
+  assert.strictEqual(M.timeGoneText(record(0.01), now), "1% of the week gone");
   assert.strictEqual(M.behindPace(record(0.04), now), false);
   assert.strictEqual(M.behindPace(record(0.07), now), true);
-  assert.strictEqual(M.paceText(record(0.07), now), "6% behind pace");
 });
 
 test("pace tolerance follows the user's setting", () => {
   const reset = new Date(now + 7 * 24 * HOUR - HOUR).toISOString();
   const weekly = M.parseProvider(JSON.stringify({ limits: [{ label: "Weekly (7-day)", percent: 0.07, resetsAt: reset }] }), "codex", now, null).provider.weekly;
   assert.strictEqual(M.behindPace(weekly, now, 0.10), false);
-  assert.strictEqual(M.paceText(weekly, now, 0.10), "Near pace · 6% over");
   assert.strictEqual(M.behindPace(weekly, now, 0), true);
 });
 
@@ -140,7 +137,7 @@ test("Suno: the billing month is the headline and is paced over its own length",
   assert.strictEqual(p.headline.detail, "2,000 of 2,500 credits left");
   assert.strictEqual(M.headlineText(p.headline, now), "20% used · resets in 3d 17h");
   // 3d 17h of 31 days left: an even pace would have used 88%.
-  assert.strictEqual(M.expectedText(p.pace, now), "Expected 88% used");
+  assert.strictEqual(M.timeGoneText(p.pace, now), "88% of the month gone");
   assert.deepStrictEqual(p.planModels, ["v6", "v6-wild"]);
   assert.strictEqual(p.tracksTokens, false);
   assert.deepStrictEqual(failing(p), []);
@@ -149,12 +146,10 @@ test("Suno: the billing month is the headline and is paced over its own length",
 test("Suno: paced like the others; only running ahead of the month turns red", () => {
   const light = M.parseProvider(JSON.stringify(sunoRecord()), "suno", now, null).provider;
   assert.strictEqual(M.paceAlarm(light, now, 0.05), false);
-  assert.strictEqual(M.paceText(light.pace, now, 0.05), "68% ahead of pace");
   const busy = sunoRecord();
   busy.limits[0].percent = 0.95;
   const b = M.parseProvider(JSON.stringify(busy), "suno", now, null).provider;
   assert.strictEqual(M.paceAlarm(b, now, 0.05), true);
-  assert.strictEqual(M.paceText(b.pace, now, 0.05), "7% behind pace");
 });
 
 test("Suno: a lapsed sign-in asks for Sign in and fails the sign-in check", () => {
@@ -216,6 +211,14 @@ test("Gemini: which sign-in answered, and the omp setup hint", () => {
   assert.strictEqual(lapsed.tokenSource, "");
   assert.strictEqual(lapsed.live, false);
   assert.strictEqual(M.providerConfig("gemini").setup.command, "omp login antigravity-cli");
+});
+
+test("period words for the time-gone line", () => {
+  const limit = (label) => M.normalizeLimit({ label, percent: 0, resetsAt: "2026-11-27T00:00:00Z" }, now);
+  assert.strictEqual(M.periodWord(limit("Weekly (7-day)")), "week");
+  assert.strictEqual(M.periodWord(limit("Monthly (credits)")), "month");
+  assert.strictEqual(M.periodWord(limit("Daily (credits)")), "day");
+  assert.strictEqual(M.periodWord(limit("Gemini (5-hour)")), "window");
 });
 
 console.log(`model tests: ${count} passed`);

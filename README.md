@@ -10,7 +10,7 @@ limits, the allowance your subscription includes, not API billing.
 
 Click it for detail in three views, switched with `←` `→` or `1` `2` `3`:
 
-1. **Overview**: each plan's limit, when it resets, pace against the week, and tokens over the last
+1. **Overview**: each plan's limit, when it resets, how much of the week (or month) has gone, and tokens over the last
    seven days.
 2. **Models**: per-model quota where the provider reports it, and today's tokens per model.
 3. **Debug**: checks on each provider's data, so you can tell when a provider changes what it
@@ -31,10 +31,10 @@ Click it for detail in three views, switched with `←` `→` or `1` `2` `3`:
 | Gemini | Google AI Pro, Ultra | Gemini 5-hour pool | Antigravity and Gemini CLI | The Gemini app on the web (not reported) |
 | Suno (off by default) | Pro, Premier | Monthly credits | suno.com and the Suno app | — |
 
-Google reports only a rolling 5-hour window for Gemini models, so Gemini has no weekly pace. Claude
+Google reports only a rolling 5-hour window for Gemini models, so Gemini has no week to measure against. Claude
 and GPT models used inside Antigravity have their own allowances, listed on the Models view.
 
-Suno is paced like the others, over its billing month: the bar shows the share of the month's
+Suno is measured like the others, over its billing month: the bar shows the share of the month's
 credits used. The panel also lists visual credits and downloads.
 
 ## Requirements
@@ -75,7 +75,7 @@ Change these in **Setup › Plugins**, or from a terminal:
 | `showClaude`, `showCodex`, `showGemini` | `true` | Show or hide a provider. A hidden provider is never queried. |
 | `showSuno` | `false` | Show Suno. Then choose **Sign in to Suno** in the panel. |
 | `barDetail` | `Percent` | `Percent and reset` adds the time until reset to the bar. |
-| `paceTolerancePercent` | `5` | How many points over its prorated share a window can run before it turns red. |
+| `paceTolerancePercent` | `5` | How many points use can run ahead of the time gone before a provider turns red. |
 | `refreshIntervalSec` | `300` | How often to refresh (60–3600). |
 
 ```bash
@@ -89,7 +89,8 @@ omarchy bar set codeofficer.subscription-usage barDetail "Percent and reset"
 - In the panel: `←` `→` or `1` `2` `3` switch views, `↑` `↓` scroll, `R` or Enter refreshes, `D` jumps
   to Debug and back, Escape closes.
 - A provider turns red when its weekly use runs more than the tolerance ahead of the week. For
-  example, with 70% of the week gone, 76% used is behind pace; 58% is ahead.
+  example, with 70% of the week gone, 76% used turns red; 58% does not. The panel shows both
+  numbers side by side ("70% of the week gone · 76% used") and marks the time gone on the bar.
 
 ## Checking it yourself
 
