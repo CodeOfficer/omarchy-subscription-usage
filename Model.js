@@ -152,6 +152,14 @@ function number(value, fallback) {
   return isFinite(parsed) ? parsed : fallback
 }
 
+// QML hands lists through Repeater delegates as list types that fail
+// Array.isArray; accept anything array-like.
+function toArray(value) {
+  if (Array.isArray(value)) return value
+  if (value && typeof value === "object" && typeof value.length === "number") return Array.prototype.slice.call(value)
+  return []
+}
+
 function clamp(value, minimum, maximum) {
   return Math.max(minimum, Math.min(maximum, value))
 }
@@ -263,7 +271,7 @@ function modelName(id) {
 // A pool's models, short: family word dropped and efforts folded together,
 // "Opus 5.5 (low, medium, high), Sonnet 5.5 (low, medium, high)".
 function poolModelsText(pool) {
-  var models = pool && Array.isArray(pool.models) ? pool.models : []
+  var models = toArray(pool ? pool.models : null)
   var order = []
   var efforts = {}
   for (var i = 0; i < models.length; i++) {
@@ -527,6 +535,7 @@ function dayLabel(value) {
 var exportsObject = {
   WEEK_MS: WEEK_MS,
   PACE_TOLERANCE: PACE_TOLERANCE,
+  toArray: toArray,
   findWeekly: findWeekly,
   normalizeLimit: normalizeLimit,
   parseProvider: parseProvider,

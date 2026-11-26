@@ -102,3 +102,9 @@ test("baselineOf captures what the checks compare against", () => {
 });
 
 console.log(`model tests: ${count} passed`);
+
+test("pool model text accepts array-like lists from QML", () => {
+  const listLike = { length: 2, 0: "gemini-3-flash", 1: "gemini-2.5-flash" };
+  assert.strictEqual(M.poolModelsText({ family: "gemini", models: listLike }), "3 Flash, 2.5 Flash");
+  console.log(`model tests: ${count} passed (incl. array-like)`);
+});

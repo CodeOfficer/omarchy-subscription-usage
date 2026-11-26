@@ -27,11 +27,15 @@ Panel {
   readonly property bool alarming: Model.behindPace(service.claude.weekly, nowMs)
     || Model.behindPace(service.codex.weekly, nowMs)
     || Model.behindPace(service.gemini.weekly, nowMs)
-  readonly property var providers: [
-    { provider: service.claude, icon: Qt.resolvedUrl("claude.svg"), tint: false },
-    { provider: service.codex, icon: Qt.resolvedUrl("codex.svg"), tint: true },
-    { provider: service.gemini, icon: Qt.resolvedUrl("gemini.svg"), tint: false }
-  ]
+  // Providers are looked up by index rather than handed through a
+  // Repeater's modelData: QML turns nested arrays there into list types
+  // that fail Array.isArray, and the cards would lose their charts and lists.
+  readonly property var icons: [Qt.resolvedUrl("claude.svg"), Qt.resolvedUrl("codex.svg"), Qt.resolvedUrl("gemini.svg")]
+  readonly property var tints: [false, true, false]
+
+  function providerAt(index) {
+    return index === 0 ? service.claude : index === 1 ? service.codex : service.gemini
+  }
 
   implicitWidth: usageButton.implicitWidth
   implicitHeight: usageButton.implicitHeight
@@ -136,9 +140,8 @@ Panel {
       spacing: Style.space(12)
 
       Repeater {
-        model: root.providers
+        model: 3
         delegate: Row {
-          required property var modelData
           required property int index
           spacing: Style.space(12)
           anchors.verticalCenter: parent ? parent.verticalCenter : undefined
@@ -153,9 +156,9 @@ Panel {
           }
 
           ProviderChip {
-            provider: modelData.provider
-            iconSource: modelData.icon
-            tintIcon: modelData.tint
+            provider: root.providerAt(index)
+            iconSource: root.icons[index]
+            tintIcon: root.tints[index]
           }
         }
       }
@@ -254,9 +257,8 @@ Panel {
           PanelSeparator { width: parent.width; foreground: root.foreground }
 
           Repeater {
-            model: root.providers
+            model: 3
             delegate: Column {
-              required property var modelData
               required property int index
               width: panelContent.width
               spacing: Style.space(12)
@@ -266,25 +268,25 @@ Panel {
               OverviewCard {
                 visible: root.view === 0
                 width: parent.width
-                provider: modelData.provider
-                iconSource: modelData.icon
-                tintIcon: modelData.tint
+                provider: root.providerAt(index)
+                iconSource: root.icons[index]
+                tintIcon: root.tints[index]
               }
 
               ModelsCard {
                 visible: root.view === 1
                 width: parent.width
-                provider: modelData.provider
-                iconSource: modelData.icon
-                tintIcon: modelData.tint
+                provider: root.providerAt(index)
+                iconSource: root.icons[index]
+                tintIcon: root.tints[index]
               }
 
               ChecksCard {
                 visible: root.view === 2
                 width: parent.width
-                provider: modelData.provider
-                iconSource: modelData.icon
-                tintIcon: modelData.tint
+                provider: root.providerAt(index)
+                iconSource: root.icons[index]
+                tintIcon: root.tints[index]
               }
             }
           }
