@@ -211,6 +211,13 @@ test("Gemini: which sign-in answered, and the omp setup hint", () => {
   assert.strictEqual(M.providerConfig("gemini").setup.command, "omp login antigravity-cli");
 });
 
+test("bar tooltip names the providers the icons stand for", () => {
+  const c = M.parseProvider(JSON.stringify({ limits: [{ label: "Weekly (7-day)", percent: 0.13, resetsAt: "2026-11-26T18:12:00Z" }] }), "claude", now, null).provider;
+  const s = M.placeholder(M.providerConfig("suno"));
+  assert.strictEqual(M.barTooltip([Object.assign(c, { name: "Claude" }), s, null], now),
+    "Claude  13% used · 6h 12m\nSuno  Loading…\nClick for details · right-click to refresh");
+});
+
 console.log(`model tests: ${count} passed`);
 
 test("pool model text accepts array-like lists from QML", () => {

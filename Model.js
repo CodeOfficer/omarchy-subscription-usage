@@ -652,6 +652,14 @@ function percent(value) {
   return Math.round(clamp(number(value, 0), 0, 1) * 100) + "%"
 }
 
+// The bar's tooltip: the names the icons stand for, one provider a line.
+function barTooltip(providers, nowMs) {
+  var lines = toArray(providers).filter(function(p) { return !!p }).map(function(p) {
+    return p.name + "  " + (p.headline ? percent(p.headline.used) + " used · " + shortResetText(p.headline, nowMs) : (p.status || "—"))
+  })
+  return lines.concat(["Click for details · right-click to refresh"]).join("\n")
+}
+
 function countdown(resetMs, nowMs) {
   if (!resetMs || resetMs <= nowMs) return "now"
   var minutes = Math.max(0, Math.floor((resetMs - nowMs) / 60000))
@@ -760,6 +768,7 @@ var exportsObject = {
   paceDifference: paceDifference,
   timeGone: timeGone,
   percent: percent,
+  barTooltip: barTooltip,
   countdown: countdown,
   started: started,
   resetText: resetText,

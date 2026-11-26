@@ -127,40 +127,28 @@ Panel {
     labelVisible: false
     hasVisualContent: true
     fixedWidth: vertical ? -1 : barContent.implicitWidth + Style.space(16)
-    tooltipText: "Plan usage · click for reset times and details"
+    // The bar shows icons only; the names are here.
+    tooltipText: Model.barTooltip(root.shown.map(root.providerAt), root.nowMs)
     active: root.alarming
     onPressed: function(buttonCode) {
       if (buttonCode === Qt.RightButton || buttonCode === Qt.MiddleButton) root.refresh()
       else root.toggle()
     }
 
+    // Icon and percent per provider: the icons tell them apart, so the bar
+    // stays narrow as providers are added.
     Row {
       id: barContent
       anchors.centerIn: parent
-      spacing: Style.space(12)
+      spacing: Style.space(10)
 
       Repeater {
         model: root.shown
-        delegate: Row {
+        delegate: ProviderChip {
           required property string modelData
-          required property int index
-          spacing: Style.space(12)
-          anchors.verticalCenter: parent ? parent.verticalCenter : undefined
-
-          Rectangle {
-            visible: index > 0
-            width: 1
-            height: Style.space(13)
-            anchors.verticalCenter: parent.verticalCenter
-            color: Qt.darker(root.barForeground, 1.55)
-            opacity: 0.65
-          }
-
-          ProviderChip {
-            provider: root.providerAt(modelData)
-            iconSource: service.iconOf(modelData)
-            tintIcon: service.tinted(modelData)
-          }
+          provider: root.providerAt(modelData)
+          iconSource: service.iconOf(modelData)
+          tintIcon: service.tinted(modelData)
         }
       }
     }
@@ -352,7 +340,7 @@ Panel {
     property bool tintIcon: false
     readonly property var headline: provider ? provider.headline : null
     readonly property bool behind: Model.paceAlarm(provider, root.nowMs, root.paceTolerance)
-    spacing: Style.space(5)
+    spacing: Style.space(4)
     anchors.verticalCenter: parent ? parent.verticalCenter : undefined
 
     ProviderIcon {
@@ -360,15 +348,6 @@ Panel {
       source: chip.iconSource
       tinted: chip.tintIcon
       color: chip.behind ? root.urgent : root.barForeground
-    }
-
-    Text {
-      anchors.verticalCenter: parent.verticalCenter
-      text: chip.provider.name
-      color: chip.behind ? root.urgent : root.barForeground
-      font.family: root.fontFamily
-      font.pixelSize: Style.font.caption
-      font.bold: true
     }
 
     Text {

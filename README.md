@@ -5,8 +5,10 @@ An Omarchy bar widget that shows how much of each AI subscription you've used: C
 limits, the allowance your subscription includes, not API billing.
 
 ```text
-✳ Claude 4%  │  ◉ Codex 1%  │  ⋀ Gemini 2%
+✳ 13%  ◉ 1%  ⋀ 2%  ♫ 0%
 ```
+
+The bar shows each provider's icon and percent used; hover it for the names and reset times.
 
 Click it for detail in three views, switched with `←` `→` or `1` `2` `3`:
 
