@@ -112,8 +112,34 @@ def summary_limits(summary):
         continue
       window = str(bucket.get("window") or "").lower()
       title = f"{short} {'weekly' if window == 'weekly' else '5-hour'}"
-      rows.append({"label": title, "title": title, "percent": round(1.0 - remaining, 4), "resetsAt": reset_time(bucket.get("resetTime"))})
+      # Scoped to some models, so the panel lists it with the models rather
+      # than as one of the plan's own limits.
+      rows.append({"label": title, "title": title, "percent": round(1.0 - remaining, 4), "resetsAt": reset_time(bucket.get("resetTime")), "scope": "models"})
   return rows
+
+
+def field_names(objects):
+  """The keys Google used across these objects: the debug view compares them
+  with the ones the widget was built against, to spot new or dropped data."""
+  names = set()
+  for item in objects[:MAX_BUCKETS]:
+    if isinstance(item, dict):
+      names.update(k for k in item.keys() if isinstance(k, str) and len(k) <= 64)
+  return sorted(names)[:64]
+
+
+def google_fields(quota, summary):
+  buckets = quota.get("buckets") if isinstance(quota, dict) else None
+  groups = summary.get("groups") if isinstance(summary, dict) else None
+  groups = groups if isinstance(groups, list) else []
+  group_buckets = [b for g in groups if isinstance(g, dict) for b in (g.get("buckets") or []) if isinstance(b, dict)]
+  return {
+    "quota": field_names([quota]) if isinstance(quota, dict) else [],
+    "quotaBucket": field_names(buckets if isinstance(buckets, list) else []),
+    "summary": field_names([summary]) if isinstance(summary, dict) else [],
+    "summaryGroup": field_names(groups),
+    "summaryBucket": field_names(group_buckets),
+  }
 
 
 def main():
@@ -147,7 +173,7 @@ def main():
     # Google reports only a rolling 5-hour window for the Gemini pool.
     limits.append({"label": "Gemini (5-hour)", "title": "Gemini", "percent": gemini["used"], "resetsAt": gemini["resetsAt"], "primary": True})
   limits.extend(summary_limits(summary))
-  record.update(limits=limits, quotaPools=pools, usageStatusText="", authHelpText="")
+  record.update(limits=limits, quotaPools=pools, googleFields=google_fields(quota, summary), usageStatusText="", authHelpText="")
   print(json.dumps(record))
 
 

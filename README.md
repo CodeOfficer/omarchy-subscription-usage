@@ -52,12 +52,16 @@ omarchy plugin disable omarchy.agents
 
 ## Usage
 
-- Left-click the bar display to open or close details.
-- Right-click or middle-click to refresh.
-- Press `R` while the panel is open to refresh.
-- Press `D` while the panel is open to show debug info: each collector's exit code, timing, plan,
-  data age, and any way its record no longer matches what the widget expects (shown in red).
-- Press Escape to close the panel.
+- Left-click the bar display to open or close the panel; right-click or middle-click to refresh.
+- In the panel, `←` `→` (or `1` `2` `3`, or click a tab) switch between three views:
+  1. **Overview**: each plan at a glance (headline limit, pace, 7-day tokens, other windows).
+  2. **Models**: per-model quota where the provider reports it (Google), model-scoped allowances,
+     and today's tokens per model.
+  3. **Debug**: checks on each provider's data. ✓ pass, ✗ fail (the widget may be wrong),
+     ◆ changed since the baseline (a new field or model from the provider: look, then accept).
+- `↑` `↓` scroll, `R` or Enter refresh, `D` jumps to Debug and back, Escape closes.
+- Pace turns red only when a weekly window is more than 5 points over its prorated share, so a
+  week that starts with your first prompt (Codex) doesn't read as behind at once.
 
 The plugin refreshes every five minutes by default. Change the interval with:
 
@@ -71,9 +75,11 @@ omarchy bar set codeofficer.agent-usage refreshIntervalSec 600 --json
 node test/model.test.js              # parsing and display logic, no network
 node test/integration.test.js        # runs every collector on this machine and checks its record
 node test/integration.test.js --live # also checks the running widget agrees
+node test/integration.test.js --update-baseline   # accept new fields/models after review
 ```
 
-The integration test only reads usage; it never spends quota. A `FAIL` line names what changed.
+The integration test runs the same checks as the Debug view and only reads usage; it never spends
+quota. It exits 1 when a check fails or the provider's data changed since the baseline in `Model.js`.
 
 ## Removal
 

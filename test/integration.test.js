@@ -1,17 +1,20 @@
 // Live integration check: runs each collector the widget runs, on this
-// machine, and checks its record against what the widget expects.
+// machine, and checks its record the way the panel's Debug view does.
 //
-//   node test/integration.test.js          collectors only
-//   node test/integration.test.js --live   also compare with the running widget
+//   node test/integration.test.js                    check
+//   node test/integration.test.js --live             also compare with the running widget
+//   node test/integration.test.js --update-baseline  accept today's fields and models
 //
-// Exits 1 when a provider breaks the contract, so it can run from cron or a
-// hook as an early signal that a provider changed something. It reads usage
-// only; it never spends quota.
+// Exit 0: every check passes. Exit 1: something failed or changed. A change
+// (a new field from Google, a new model such as Neon) is not a bug, but it is
+// the signal to look; after reviewing it, --update-baseline accepts it.
+// It reads usage only and never spends quota.
 const { execFile } = require("child_process");
 const fs = require("fs"), path = require("path"), Module = require("module");
 
 const root = path.join(__dirname, "..");
-const src = fs.readFileSync(path.join(root, "Model.js"), "utf8").replace(/^\.pragma library\s*$/m, "");
+const modelPath = path.join(root, "Model.js");
+const src = fs.readFileSync(modelPath, "utf8").replace(/^\.pragma library\s*$/m, "");
 const mod = new Module("Model.js"); mod._compile(src, "Model.js");
 const M = mod.exports;
 
@@ -30,19 +33,6 @@ function run(command) {
   });
 }
 
-function check(id, result) {
-  const problems = [];
-  if (result.code !== 0) problems.push(`exited with ${result.code}: ${String(result.stderr).trim().slice(0, 200)}`);
-  const parsed = M.parseProvider(result.stdout, id, Date.now());
-  if (!parsed.ok) return { problems: problems.concat(["output is not valid JSON"]) };
-  const p = parsed.provider;
-  for (const limit of p.limits) {
-    if (!(limit.used >= 0 && limit.used <= 1)) problems.push(`${limit.label}: percent ${limit.used} out of range`);
-  }
-  problems.push(...p.warnings);
-  return { problems, provider: p };
-}
-
 function liveStatus() {
   return new Promise((resolve) => {
     execFile("omarchy-shell", ["codeofficer.agent-usage", "status"], { timeout: 15000 }, (error, stdout) => {
@@ -51,25 +41,46 @@ function liveStatus() {
   });
 }
 
+function writeBaseline(results) {
+  const baseline = {};
+  providers.forEach((p, i) => { baseline[p.id] = M.baselineOf(results[i].stdout, p.id); });
+  const text = fs.readFileSync(modelPath, "utf8");
+  const block = "// BASELINE-START\nvar BASELINE = " + JSON.stringify(baseline, null, 2) + "\n// BASELINE-END";
+  fs.writeFileSync(modelPath, text.replace(/\/\/ BASELINE-START[\s\S]*?\/\/ BASELINE-END/, block));
+  console.log("baseline written to Model.js — review the diff, then commit");
+}
+
+const mark = { pass: "✓", changed: "◆", fail: "✗" };
+
 (async () => {
   const live = process.argv.includes("--live");
   const results = await Promise.all(providers.map((p) => run(p.command)));
+  if (process.argv.includes("--update-baseline")) return writeBaseline(results);
   const status = live ? await liveStatus() : null;
-  let failed = 0;
+  let bad = 0;
+
   providers.forEach((p, i) => {
-    const { problems, provider } = check(p.id, results[i]);
-    const head = provider && provider.headline;
-    const summary = head ? `${M.percent(head.used)} of ${M.windowName(head) || head.label}` : "no headline";
-    if (live) {
+    const result = results[i];
+    const checks = [{ name: `Collector ran · ${(result.ms / 1000).toFixed(1)} s`, state: result.code === 0 ? "pass" : "fail",
+      detail: result.code === 0 ? "" : `exit ${result.code}: ${String(result.stderr).trim().slice(0, 200)}` }];
+    const parsed = M.parseProvider(result.stdout, p.id, Date.now());
+    if (!parsed.ok) checks.push({ name: "Output is valid JSON", state: "fail", detail: parsed.error });
+    else checks.push(...parsed.provider.checks);
+    if (live && parsed.ok) {
       const shown = status && status[p.id];
-      if (!shown) problems.push("running widget did not answer (is the shell up?)");
-      else if (head && shown.remaining !== null && Math.abs(shown.remaining - head.remaining) > 0.02)
-        problems.push(`widget shows ${M.percent(1 - shown.remaining)}, collector says ${M.percent(head.used)} (stale until next refresh?)`);
+      const head = parsed.provider.headline;
+      const agrees = shown && (!head || shown.remaining === null || Math.abs(shown.remaining - head.remaining) <= 0.02);
+      checks.push({ name: "Running widget agrees", state: agrees ? "pass" : "fail",
+        detail: !shown ? "no answer from the widget (is the shell up?)"
+          : `widget ${M.percent(1 - shown.remaining)}, collector ${M.percent(head.used)} (refresh pending?)` });
     }
-    const mark = problems.length ? "FAIL" : "ok  ";
-    console.log(`${mark} ${p.id.padEnd(7)} ${summary.padEnd(22)} ${results[i].ms} ms`);
-    for (const problem of problems) console.log(`       ! ${problem}`);
-    if (problems.length) failed++;
+    const head = parsed.ok && parsed.provider.headline;
+    console.log(`\n${p.id.toUpperCase()}  ${head ? M.headlineText(head, Date.now()) : "no headline"}`);
+    for (const c of checks) {
+      console.log(`  ${mark[c.state]} ${c.name}${c.state !== "pass" && c.detail ? `\n      ${c.detail}` : ""}`);
+      if (c.state !== "pass") bad++;
+    }
   });
-  process.exit(failed ? 1 : 0);
+  console.log(bad ? `\n${bad} check(s) failed or changed` : "\nall checks pass");
+  process.exit(bad ? 1 : 0);
 })();
