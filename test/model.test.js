@@ -40,6 +40,14 @@ test("pace tolerance: a week that just started is not behind for a little use", 
   assert.strictEqual(M.paceText(record(0.07), now), "6% behind pace");
 });
 
+test("pace tolerance follows the user's setting", () => {
+  const reset = new Date(now + 7 * 24 * HOUR - HOUR).toISOString();
+  const weekly = M.parseProvider(JSON.stringify({ limits: [{ label: "Weekly (7-day)", percent: 0.07, resetsAt: reset }] }), "codex", now, null).provider.weekly;
+  assert.strictEqual(M.behindPace(weekly, now, 0.10), false);
+  assert.strictEqual(M.paceText(weekly, now, 0.10), "Near pace · 6% over");
+  assert.strictEqual(M.behindPace(weekly, now, 0), true);
+});
+
 test("Gemini: the primary 5-hour pool is the headline, with its window name", () => {
   const gem = M.parseProvider(JSON.stringify({
     limits: [

@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node test/model.test.js)",
+      "Bash(node test/integration.test.js)",
+      "Bash(node test/integration.test.js --live)",
+      "Bash(omarchy plugin validate:*)",
+      "Bash(omarchy-shell codeofficer.agent-usage:*)",
+      "Bash(./bin/gemini-usage)"
+    ]
+  }
+}

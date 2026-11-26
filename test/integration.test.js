@@ -18,11 +18,28 @@ const src = fs.readFileSync(modelPath, "utf8").replace(/^\.pragma library\s*$/m,
 const mod = new Module("Model.js"); mod._compile(src, "Model.js");
 const M = mod.exports;
 
+const manifest = JSON.parse(fs.readFileSync(path.join(root, "manifest.json"), "utf8"));
+
+// The widget's settings as the shell sees them: manifest defaults, then this
+// machine's bar entry in ~/.config/omarchy/shell.json. Providers switched off
+// there (showGemini: false, say) are skipped here too.
+function widgetSettings() {
+  const settings = Object.assign({}, manifest.barWidget.defaults);
+  try {
+    const home = process.env.XDG_CONFIG_HOME || path.join(require("os").homedir(), ".config");
+    const shell = JSON.parse(fs.readFileSync(path.join(home, "omarchy", "shell.json"), "utf8"));
+    for (const entries of Object.values((shell.bar && shell.bar.layout) || {}))
+      for (const entry of entries || []) if (entry && entry.id === manifest.id) Object.assign(settings, entry);
+  } catch { /* no shell.json: defaults */ }
+  return settings;
+}
+
+const settings = widgetSettings();
 const providers = [
-  { id: "claude", command: ["omarchy-agent-usage-claude", "--limits-only"] },
-  { id: "codex", command: ["omarchy-agent-usage-codex", "--limits-only"] },
-  { id: "gemini", command: [path.join(root, "bin", "gemini-usage")] },
-];
+  { id: "claude", setting: "showClaude", command: ["omarchy-agent-usage-claude", "--limits-only"] },
+  { id: "codex", setting: "showCodex", command: ["omarchy-agent-usage-codex", "--limits-only"] },
+  { id: "gemini", setting: "showGemini", command: [path.join(root, "bin", "gemini-usage")] },
+].filter((p) => settings[p.setting] !== false && settings[p.setting] !== "false");
 
 function run(command) {
   return new Promise((resolve) => {
@@ -43,6 +60,8 @@ function liveStatus() {
 
 function writeBaseline(results) {
   const baseline = {};
+  // Providers skipped on this machine keep their existing baseline.
+  Object.assign(baseline, M.BASELINE || {});
   providers.forEach((p, i) => { baseline[p.id] = M.baselineOf(results[i].stdout, p.id); });
   const text = fs.readFileSync(modelPath, "utf8");
   const block = "// BASELINE-START\nvar BASELINE = " + JSON.stringify(baseline, null, 2) + "\n// BASELINE-END";

@@ -23,11 +23,19 @@ Item {
   property string _geminiError: ""
 
   readonly property string geminiCollector: String(Qt.resolvedUrl("bin/gemini-usage")).replace(/^file:\/\//, "")
+  // Which providers to show (manifest settings showClaude/showCodex/showGemini),
+  // in bar order. A hidden provider's collector never runs.
+  readonly property var enabled: [boolSetting("showClaude", true), boolSetting("showCodex", true), boolSetting("showGemini", true)]
   readonly property int refreshIntervalSec: intSetting("refreshIntervalSec", 300, 60, 3600)
 
   function setting(name, fallback) {
     var value = settings ? settings[name] : undefined
     return value === undefined || value === null ? fallback : value
+  }
+
+  function boolSetting(name, fallback) {
+    var value = setting(name, fallback)
+    return value === true || value === "true"
   }
 
   function intSetting(name, fallback, minimum, maximum) {
@@ -43,10 +51,12 @@ Item {
 
   function refresh() {
     if (refreshing || claudeProcess.running || codexProcess.running || geminiProcess.running) return
+    var runs = [claudeProcess, codexProcess, geminiProcess].filter(function(_, i) { return enabled[i] })
+    if (runs.length === 0) return
     refreshing = true
     _startedAt = Date.now()
     lastError = ""
-    _pending = 3
+    _pending = runs.length
     _claudeOutput = ""
     _claudeError = ""
     _codexOutput = ""
@@ -58,9 +68,7 @@ Item {
     // Gemini usage comes from this plugin's own collector: Omarchy's
     // Antigravity record plus Google's per-model quota (see bin/gemini-usage).
     geminiProcess.command = [root.geminiCollector]
-    claudeProcess.running = true
-    codexProcess.running = true
-    geminiProcess.running = true
+    for (var i = 0; i < runs.length; i++) runs[i].running = true
   }
 
   function finishOne() {

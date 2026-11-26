@@ -25,7 +25,12 @@
     "allowMultiple": false,
     "defaultSection": "right",
     "defaults": {
-      "refreshIntervalSec": 300
+      "refreshIntervalSec": 300,
+      "showClaude": true,
+      "showCodex": true,
+      "showGemini": true,
+      "barDetail": "Percent",
+      "paceTolerancePercent": 5
     },
     "schema": [
       {
@@ -36,6 +41,48 @@
         "max": 3600,
         "step": 60,
         "defaultValue": 300
+      },
+      {
+        "key": "showClaude",
+        "type": "boolean",
+        "label": "Show Claude",
+        "defaultValue": true,
+        "description": "Claude Pro/Max limits, read with the sign-in Claude Code keeps."
+      },
+      {
+        "key": "showCodex",
+        "type": "boolean",
+        "label": "Show Codex",
+        "defaultValue": true,
+        "description": "ChatGPT plan Codex limits, read with the sign-in the Codex CLI keeps."
+      },
+      {
+        "key": "showGemini",
+        "type": "boolean",
+        "label": "Show Gemini",
+        "defaultValue": true,
+        "description": "Google AI Pro/Ultra Gemini quota, read with the sign-in the Antigravity CLI (agy) keeps."
+      },
+      {
+        "key": "barDetail",
+        "type": "enum",
+        "label": "Bar detail",
+        "options": [
+          "Percent",
+          "Percent and reset"
+        ],
+        "defaultValue": "Percent",
+        "description": "Show only the percent used in the bar, or the time until reset too. The panel always shows both."
+      },
+      {
+        "key": "paceTolerancePercent",
+        "type": "integer",
+        "label": "Pace tolerance (points)",
+        "min": 0,
+        "max": 25,
+        "step": 1,
+        "defaultValue": 5,
+        "description": "How far over its prorated share a weekly window can run before it turns red."
       }
     ]
   }

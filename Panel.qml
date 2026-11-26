@@ -24,14 +24,16 @@ Panel {
   readonly property color urgent: bar ? bar.urgent : Color.urgent
   readonly property color dim: Qt.darker(foreground, 1.55)
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
-  readonly property bool alarming: Model.behindPace(service.claude.weekly, nowMs)
-    || Model.behindPace(service.codex.weekly, nowMs)
-    || Model.behindPace(service.gemini.weekly, nowMs)
+  readonly property bool alarming: shown.some(function(i) { return Model.behindPace(providerAt(i).weekly, nowMs, paceTolerance) })
   // Providers are looked up by index rather than handed through a
   // Repeater's modelData: QML turns nested arrays there into list types
   // that fail Array.isArray, and the cards would lose their charts and lists.
   readonly property var icons: [Qt.resolvedUrl("claude.svg"), Qt.resolvedUrl("codex.svg"), Qt.resolvedUrl("gemini.svg")]
   readonly property var tints: [false, true, false]
+  // Settings from the manifest schema (Setup › Plugins, or `omarchy bar set`).
+  readonly property var shown: [0, 1, 2].filter(function(i) { return service.enabled[i] })
+  readonly property real paceTolerance: service.intSetting("paceTolerancePercent", 5, 0, 25) / 100
+  readonly property bool barShowsReset: String(service.setting("barDetail", "Percent")) === "Percent and reset"
 
   function providerAt(index) {
     return index === 0 ? service.claude : index === 1 ? service.codex : service.gemini
@@ -86,9 +88,9 @@ Panel {
     function status(): string {
       return JSON.stringify({
         refreshing: service.refreshing,
-        claude: root.providerStatus(service.claude),
-        codex: root.providerStatus(service.codex),
-        gemini: root.providerStatus(service.gemini),
+        claude: service.enabled[0] ? root.providerStatus(service.claude) : null,
+        codex: service.enabled[1] ? root.providerStatus(service.codex) : null,
+        gemini: service.enabled[2] ? root.providerStatus(service.gemini) : null,
         error: service.lastError
       })
     }
@@ -101,7 +103,7 @@ Panel {
       window: Model.windowName(headline),
       remaining: headline ? headline.remaining : null,
       resetsAt: headline && Model.started(headline) ? new Date(headline.resetMs).toISOString() : "",
-      behindPace: Model.behindPace(weekly, nowMs),
+      behindPace: Model.behindPace(weekly, nowMs, root.paceTolerance),
       status: provider ? provider.status : "",
       problems: provider && Array.isArray(provider.warnings) ? provider.warnings : [],
       run: provider && provider.debug ? provider.debug : null
@@ -140,8 +142,9 @@ Panel {
       spacing: Style.space(12)
 
       Repeater {
-        model: 3
+        model: root.shown
         delegate: Row {
+          required property int modelData
           required property int index
           spacing: Style.space(12)
           anchors.verticalCenter: parent ? parent.verticalCenter : undefined
@@ -156,9 +159,9 @@ Panel {
           }
 
           ProviderChip {
-            provider: root.providerAt(index)
-            iconSource: root.icons[index]
-            tintIcon: root.tints[index]
+            provider: root.providerAt(modelData)
+            iconSource: root.icons[modelData]
+            tintIcon: root.tints[modelData]
           }
         }
       }
@@ -257,8 +260,9 @@ Panel {
           PanelSeparator { width: parent.width; foreground: root.foreground }
 
           Repeater {
-            model: 3
+            model: root.shown
             delegate: Column {
+              required property int modelData
               required property int index
               width: panelContent.width
               spacing: Style.space(12)
@@ -268,25 +272,25 @@ Panel {
               OverviewCard {
                 visible: root.view === 0
                 width: parent.width
-                provider: root.providerAt(index)
-                iconSource: root.icons[index]
-                tintIcon: root.tints[index]
+                provider: root.providerAt(modelData)
+                iconSource: root.icons[modelData]
+                tintIcon: root.tints[modelData]
               }
 
               ModelsCard {
                 visible: root.view === 1
                 width: parent.width
-                provider: root.providerAt(index)
-                iconSource: root.icons[index]
-                tintIcon: root.tints[index]
+                provider: root.providerAt(modelData)
+                iconSource: root.icons[modelData]
+                tintIcon: root.tints[modelData]
               }
 
               ChecksCard {
                 visible: root.view === 2
                 width: parent.width
-                provider: root.providerAt(index)
-                iconSource: root.icons[index]
-                tintIcon: root.tints[index]
+                provider: root.providerAt(modelData)
+                iconSource: root.icons[modelData]
+                tintIcon: root.tints[modelData]
               }
             }
           }
@@ -350,7 +354,7 @@ Panel {
     property bool tintIcon: false
     readonly property var weekly: provider ? provider.weekly : null
     readonly property var headline: provider ? provider.headline : null
-    readonly property bool behind: Model.behindPace(weekly, root.nowMs)
+    readonly property bool behind: Model.behindPace(weekly, root.nowMs, root.paceTolerance)
     spacing: Style.space(5)
     anchors.verticalCenter: parent ? parent.verticalCenter : undefined
 
@@ -372,8 +376,9 @@ Panel {
 
     Text {
       anchors.verticalCenter: parent.verticalCenter
-      // Percent only, to keep the bar narrow; reset times are in the panel.
-      text: chip.headline ? Model.percent(chip.headline.used) : "—"
+      // Percent only by default, to keep the bar narrow (setting barDetail).
+      text: !chip.headline ? "—"
+        : Model.percent(chip.headline.used) + (root.barShowsReset ? " · " + Model.shortResetText(chip.headline, root.nowMs) : "")
       color: chip.behind ? root.urgent : root.barForeground
       font.family: root.fontFamily
       font.pixelSize: Style.font.caption
@@ -466,7 +471,7 @@ Panel {
     property bool tintIcon: false
     readonly property var weekly: provider ? provider.weekly : null
     readonly property var headline: provider ? provider.headline : null
-    readonly property bool behind: Model.behindPace(weekly, root.nowMs)
+    readonly property bool behind: Model.behindPace(weekly, root.nowMs, root.paceTolerance)
     spacing: Style.space(8)
 
     CardHeader {
@@ -497,7 +502,7 @@ Panel {
     InfoRow {
       visible: !!card.weekly
       width: parent.width
-      label: Model.paceText(card.weekly, root.nowMs)
+      label: Model.paceText(card.weekly, root.nowMs, root.paceTolerance)
       labelColor: card.behind ? root.urgent : root.dim
       value: Model.expectedText(card.weekly, root.nowMs)
     }

@@ -426,19 +426,22 @@ function paceDifference(weekly, nowMs) {
   return weekly.remaining - expectedRemaining(weekly, nowMs)
 }
 
-function behindPace(weekly, nowMs) {
+// tolerance: fraction of the week (0.05 = 5 points); the panel passes the
+// user's paceTolerancePercent setting.
+function behindPace(weekly, nowMs, tolerance) {
   if (!weekly || weekly.resetMs <= 0) return false
-  return paceDifference(weekly, nowMs) < -PACE_TOLERANCE
+  var allowed = tolerance === undefined ? PACE_TOLERANCE : clamp(number(tolerance, PACE_TOLERANCE), 0, 1)
+  return paceDifference(weekly, nowMs) < -allowed
 }
 
-function paceText(weekly, nowMs) {
+function paceText(weekly, nowMs, tolerance) {
   if (!weekly) return "No weekly limit"
   if (!started(weekly)) return "Window not started"
   var difference = paceDifference(weekly, nowMs)
   var points = Math.round(Math.abs(difference) * 100)
   if (points === 0) return "On pace"
   if (difference > 0) return points + "% ahead of pace"
-  return behindPace(weekly, nowMs) ? points + "% behind pace" : "Near pace · " + points + "% over"
+  return behindPace(weekly, nowMs, tolerance) ? points + "% behind pace" : "Near pace · " + points + "% over"
 }
 
 // ---- Text ---------------------------------------------------------------
@@ -535,6 +538,7 @@ function dayLabel(value) {
 var exportsObject = {
   WEEK_MS: WEEK_MS,
   PACE_TOLERANCE: PACE_TOLERANCE,
+  BASELINE: BASELINE,
   toArray: toArray,
   findWeekly: findWeekly,
   normalizeLimit: normalizeLimit,

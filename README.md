@@ -1,100 +1,100 @@
 # Agent Usage for Omarchy
 
-An Omarchy bar plugin that keeps weekly Claude, Codex and Gemini usage visible without opening a panel.
+An Omarchy bar widget that shows how much of each AI subscription you've used: Claude, Codex
+(ChatGPT plans) and Gemini (Google AI plans). It reads your **plan's** limits, the allowance your
+subscription includes, not API billing.
 
-> Fork of [robzolkos/omarchy-agent-usage](https://github.com/robzolkos/omarchy-agent-usage) that adds
-> Gemini (Google AI Pro, through Antigravity) and keeps the bar compact: percentages only, with reset
-> times in the panel.
+```text
+✳ Claude 4%  │  ◉ Codex 1%  │  ⋀ Gemini 2%
+```
+
+Click it for detail in three views, switched with `←` `→` or `1` `2` `3`:
+
+1. **Overview**: each plan's limit, when it resets, pace against the week, and tokens over the last
+   seven days.
+2. **Models**: per-model quota where the provider reports it, and today's tokens per model.
+3. **Debug**: checks on each provider's data, so you can tell when a provider changes what it
+   reports (✓ pass, ✗ fail, ◆ changed).
 
 ![Agent Usage panel for Omarchy](preview.png)
 
-## What it shows
+> Started as a fork of [robzolkos/omarchy-agent-usage](https://github.com/robzolkos/omarchy-agent-usage),
+> which covers Claude and Codex.
 
-Each provider displays its weekly allowance used directly in the bar:
+## What each provider reports
 
-```text
-Claude 31%  Codex 18%  Gemini 4%
-```
+| Provider | Plans | The bar shows | Updated by | Not included |
+|---|---|---|---|---|
+| Claude | Pro, Max | Weekly limit | Claude Code and claude.ai (one shared limit) | — |
+| Codex | ChatGPT Plus, Pro | Weekly Codex limit | Codex CLI, IDE and web | ChatGPT chat messages (not reported) |
+| Gemini | Google AI Pro, Ultra | Gemini 5-hour pool | Antigravity and Gemini CLI | The Gemini app on the web (not reported) |
 
-Reset countdowns, pace and the 7-day token chart are in the panel. A window that has no reset time
-yet (Google starts the clock at your first use) shows as *window not started*.
-
-A provider turns red when its usage exceeds the prorated portion of its seven-day window. For example, with 70% of the week elapsed, 76% used is behind pace while 58% used is ahead.
-
-Click the bar display for detailed meters, expected remaining allowance, pace difference, a seven-day token chart, and additional limit windows. Right-click or middle-click to refresh immediately.
+Google reports only a rolling 5-hour window for Gemini models, so Gemini has no weekly pace. Claude
+and GPT models used inside Antigravity have their own allowances, listed on the Models view.
 
 ## Requirements
 
-- Omarchy with Quickshell plugin support.
-- Authenticated Claude Code and Codex CLIs, and the Antigravity CLI (`agy`) signed in to your Google account.
-- Omarchy's `omarchy-agent-usage-claude`, `omarchy-agent-usage-codex` and `omarchy-agent-usage-agy` collectors.
-- If Gemini shows *Limits paused*, start `agy` once to refresh its sign-in.
+- Omarchy with shell plugin support. The collectors this widget runs ship with Omarchy.
+- For each provider you show, its CLI signed in to your account:
+  - Claude: `claude` (Claude Code)
+  - Codex: `codex`
+  - Gemini: `agy` (Antigravity CLI). If Gemini says *Limits paused*, start `agy` once to refresh
+    its sign-in.
 
-The plugin runs each collector with `--limits-only`. It uses the credentials already managed by the provider CLIs and does not read or store credentials.
+The widget reads the sign-ins those CLIs already keep. It never stores credentials.
 
-## Installation
+## Install
 
 ```bash
 omarchy plugin add https://github.com/CodeOfficer/omarchy-agent-usage.git --enable
 ```
 
-For a local checkout:
+If Omarchy's own Agents widget also shows, you can turn it off with
+`omarchy plugin disable omarchy.agents`.
+
+## Settings
+
+Change these in **Setup › Plugins**, or from a terminal:
+
+| Setting | Default | What it does |
+|---|---|---|
+| `showClaude`, `showCodex`, `showGemini` | `true` | Show or hide a provider. A hidden provider is never queried. |
+| `barDetail` | `Percent` | `Percent and reset` adds the time until reset to the bar. |
+| `paceTolerancePercent` | `5` | How many points over its prorated share a week can run before it turns red. |
+| `refreshIntervalSec` | `300` | How often to refresh (60–3600). |
 
 ```bash
-omarchy plugin add ~/code/codeofficer/omarchy-agent-usage --enable
+omarchy bar set codeofficer.agent-usage showGemini false --json
+omarchy bar set codeofficer.agent-usage barDetail "Percent and reset"
 ```
 
-Disable Omarchy's built-in Agents display if both widgets appear:
+## Use
+
+- Click the widget to open the panel; right-click or middle-click to refresh.
+- In the panel: `←` `→` or `1` `2` `3` switch views, `↑` `↓` scroll, `R` or Enter refreshes, `D` jumps
+  to Debug and back, Escape closes.
+- A provider turns red when its weekly use runs more than the tolerance ahead of the week. For
+  example, with 70% of the week gone, 76% used is behind pace; 58% is ahead.
+
+## Checking it yourself
 
 ```bash
-omarchy plugin disable omarchy.agents
+node test/integration.test.js
 ```
 
-## Usage
+This runs every collector the widget uses for the providers you show and prints the same checks as
+the Debug view. It only reads usage; it never spends any of your quota.
 
-- Left-click the bar display to open or close the panel; right-click or middle-click to refresh.
-- In the panel, `←` `→` (or `1` `2` `3`, or click a tab) switch between three views:
-  1. **Overview**: each plan at a glance (headline limit, pace, 7-day tokens, other windows).
-  2. **Models**: per-model quota where the provider reports it (Google), model-scoped allowances,
-     and today's tokens per model.
-  3. **Debug**: checks on each provider's data. ✓ pass, ✗ fail (the widget may be wrong),
-     ◆ changed since the baseline (a new field or model from the provider: look, then accept).
-- `↑` `↓` scroll, `R` or Enter refresh, `D` jumps to Debug and back, Escape closes.
-- Pace turns red only when a weekly window is more than 5 points over its prorated share, so a
-  week that starts with your first prompt (Codex) doesn't read as behind at once.
-
-The plugin refreshes every five minutes by default. Change the interval with:
-
-```bash
-omarchy bar set codeofficer.agent-usage refreshIntervalSec 600 --json
-```
-
-## Tests
-
-```bash
-node test/model.test.js              # parsing and display logic, no network
-node test/integration.test.js        # runs every collector on this machine and checks its record
-node test/integration.test.js --live # also checks the running widget agrees
-node test/integration.test.js --update-baseline   # accept new fields/models after review
-```
-
-The integration test runs the same checks as the Debug view and only reads usage; it never spends
-quota. It exits 1 when a check fails or the provider's data changed since the baseline in `Model.js`.
-
-## Removal
-
-Remove the plugin with:
+## Remove
 
 ```bash
 omarchy plugin remove codeofficer.agent-usage
 ```
 
-Restore Omarchy's built-in Agents display if desired:
+## Contributing
 
-```bash
-omarchy plugin enable omarchy.agents
-```
+See [AGENTS.md](AGENTS.md) for how the code is laid out, the development loop and the tests.
 
 ## License
 
-MIT
+MIT. See [LICENSE](LICENSE).
