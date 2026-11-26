@@ -201,14 +201,6 @@ test("a lapsed sign-in skips the baseline comparisons instead of failing them", 
   assert.deepStrictEqual(failing(p), ["Data is fresh", "Signed in"]);
   assert.deepStrictEqual(skippedNames(p), ["Google reports a Gemini pool", "Record fields unchanged", "Model list unchanged", "Google's fields unchanged"]);
   assert.ok(p.warnings.every((w) => !/unchanged|pool/.test(w)));
-  assert.strictEqual(p.recentUnit, "tokens");
-});
-
-test("Suno charts credits, not tokens", () => {
-  const p = M.parseProvider(JSON.stringify(sunoRecord({ recentUnit: "credits", recentDays: [{ date: "2026-11-26", messageCount: 40 }] })), "suno", now, null).provider;
-  assert.strictEqual(p.recentUnit, "credits");
-  assert.strictEqual(M.recentTotal(p.recentDays), 40);
-  assert.strictEqual(M.parseProvider(JSON.stringify(sunoRecord({ recentUnit: "<b>" })), "suno", now, null).provider.recentUnit, "tokens");
 });
 
 test("Gemini: which sign-in answered, and the omp setup hint", () => {

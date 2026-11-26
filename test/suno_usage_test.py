@@ -128,33 +128,11 @@ def jwt_claims_reads_only_well_formed_tokens():
 
 
 @test
-def daily_history_charts_credits_per_day():
-  h = {}
-  suno.note_usage(h, "2026-11-24", 100, "P1")   # first day seen: only what was used while watching
-  suno.note_usage(h, "2026-11-24", 130, "P1")
-  suno.note_usage(h, "2026-11-25", 130, "P1")   # nothing used
-  suno.note_usage(h, "2026-11-26", 200, "P1")
-  assert suno.recent_days(h, "2026-11-26")[-3:] == [
-    {"date": "2026-11-24", "messageCount": 30}, {"date": "2026-11-25", "messageCount": 0}, {"date": "2026-11-26", "messageCount": 70}]
-  # Days before the history began are unknown, not zero.
-  assert [r["messageCount"] for r in suno.recent_days(h, "2026-11-26")[:4]] == [None] * 4
-  suno.note_usage(h, "2026-11-30", 20, "P2")    # new billing month
-  assert suno.recent_days(h, "2026-11-30")[-1] == {"date": "2026-11-30", "messageCount": 20}
-  for d in range(1, 20):
-    suno.note_usage(h, f"2026-12-{d:02d}", d, "P2")
-  assert len(h) == 14 and len(suno.recent_days(h, "2026-12-19")) == 7
-
-
-@test
-def history_is_written_to_the_state_folder():
-  from pathlib import Path
-  with tempfile.TemporaryDirectory() as tmp:
-    path = Path(tmp) / "h.json"
-    r = suno.with_history(suno.build_record(INFO, NOW), NOW, path)
-    assert len(r["recentDays"]) == 7 and r["recentDays"][-1]["messageCount"] == 0
-    assert r["recentDays"][0]["messageCount"] is None
-    assert json.loads(path.read_text())[r["recentDays"][-1]["date"]]["last"] == 500
-  assert suno.with_history(suno.empty_record(), NOW)["recentDays"] == []
+def songs_left_from_the_plans_own_rate():
+  assert suno.credits_per_song({"features": "Access to v4\n2,500 credits (up to 500 songs), refreshes monthly"}) == 5
+  assert suno.credits_per_song({"features": "No numbers here"}) is None
+  r = suno.build_record(dict(INFO, plan=dict(INFO["plan"], features="2,500 credits (up to 500 songs)")), NOW)
+  assert r["limits"][0]["detail"] == "500 of 2,500 credits used · ≈400 songs left"
 
 
 @test

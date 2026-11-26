@@ -187,8 +187,6 @@ var BASELINE = {
       "name",
       "plan",
       "planModels",
-      "recentDays",
-      "recentUnit",
       "schemaVersion",
       "signInRequired",
       "sourceFields",
@@ -585,8 +583,6 @@ function parseProvider(stdout, providerId, nowMs, baseline) {
       tracksTokens: !!raw.todayTokensByModel && typeof raw.todayTokensByModel === "object",
       todayModels: parseModelTokens(raw.todayTokensByModel),
       recentDays: Array.isArray(raw.recentDays) ? raw.recentDays : [],
-      // What recentDays counts: agent CLIs count tokens, Suno credits.
-      recentUnit: /^[a-z]{1,12}$/.test(String(raw.recentUnit || "")) ? String(raw.recentUnit) : "tokens",
       // A fresh, signed-in answer (else the numbers shown are old or absent).
       live: isLive(raw),
       updatedAt: String(raw.updatedAt || ""),

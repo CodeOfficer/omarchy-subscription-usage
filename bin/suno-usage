@@ -45,7 +45,7 @@ def empty_record():
     "schemaVersion": 1, "id": PROVIDER, "name": "Suno", "plan": "", "tierLabel": "",
     "limits": [], "credits": {}, "planModels": [], "sourceFields": {},
     "signInRequired": False, "usageStatusText": "", "authHelpText": "",
-    "limitsFetchedAt": 0, "updatedAt": "", "recentDays": [], "recentUnit": "credits",
+    "limitsFetchedAt": 0, "updatedAt": "",
   }
 
 
@@ -79,6 +79,16 @@ def period_start(period, end):
   return start.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def credits_per_song(plan):
+  """The plan's own rate, from its description ("2,500 credits (up to 500
+  songs)"), so the panel can say what the credits left are worth."""
+  match = re.search(r"([\d,]+)\s+credits\s*\(up to\s+([\d,]+)\s+songs\)", str(plan.get("features") or ""))
+  if not match:
+    return None
+  credits, songs = (int(x.replace(",", "")) for x in match.groups())
+  return credits / songs if credits > 0 and songs > 0 else None
+
+
 def share(used, total):
   return round(min(1.0, max(0.0, used / total)), 4) if total else 0.0
 
@@ -106,6 +116,9 @@ def build_record(info, now):
     detail = f"{used:,} of {monthly:,} credits used"
     if extra:
       detail += f" · {extra:,} extra"
+    rate = credits_per_song(plan)
+    if rate and left is not None:
+      detail += f" · ≈{int(left // rate):,} songs left"
     limits.append({
       "label": ("Daily" if period == "day" else "Monthly") + " (credits)", "title": "Credits",
       "percent": share(used, monthly), "resetsAt": end_text, "windowStartsAt": period_start(period, end),
@@ -146,85 +159,6 @@ def build_record(info, now):
   return record
 
 
-# ---- Daily history ----------------------------------------------------------
-# Suno reports only the month's running total. To chart credits per day like
-# the token charts of the other providers, each run notes the total under
-# today's date; a day's use is its last total minus the day before's (or, on
-# the first day seen, minus its own first total). Days before the history
-# began are left out, not shown as zero.
-
-def history_path():
-  return bs.state_dir() / "suno-history.json"
-
-
-def load_history(path):
-  try:
-    data = json.loads(path.read_text())
-  except (OSError, ValueError):
-    return {}
-  return data if isinstance(data, dict) else {}
-
-
-def note_usage(history, day, used, period_end):
-  entry = history.get(day)
-  if not isinstance(entry, dict) or entry.get("period") != period_end:
-    entry = {"first": used, "last": used, "period": period_end}
-  entry["last"] = used
-  history[day] = entry
-  for old in sorted(history)[:-14]:
-    del history[old]
-  return history
-
-
-def recent_days(history, today, count=7):
-  days = sorted(d for d in history if d <= today)[-count:]
-  rows = []
-  for day in days:
-    entry = history[day]
-    earlier = [d for d in sorted(history) if d < day]
-    before = history[earlier[-1]] if earlier else None
-    if before and before.get("period") == entry.get("period"):
-      start = before.get("last", 0)
-    elif before:
-      start = 0  # a new billing period began since the day before
-    else:
-      start = entry.get("first", 0)
-    rows.append({"date": day, "messageCount": max(0, int(entry.get("last", 0)) - int(start))})
-  return pad_days(rows, today, count)
-
-
-def pad_days(rows, today, count):
-  """Always `count` days ending today, like the other charts; a day before
-  the history began has messageCount None (shown as unknown, not zero)."""
-  from datetime import date, timedelta as td
-  by_date = {r["date"]: r for r in rows}
-  end = date.fromisoformat(today)
-  days = [(end - td(days=i)).isoformat() for i in range(count - 1, -1, -1)]
-  first = min(by_date) if by_date else today
-  return [by_date.get(d) or {"date": d, "messageCount": None if d < first else 0} for d in days]
-
-
-def with_history(record, now, path=None):
-  credits = record.get("credits") or {}
-  used = credits.get("monthlyUsage")
-  if used is None:
-    return record
-  path = path or history_path()
-  today = time.strftime("%Y-%m-%d", time.localtime(now))
-  period = record["limits"][0]["resetsAt"] if record["limits"] else ""
-  history = note_usage(load_history(path), today, used, period)
-  try:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    os.chmod(path.parent, 0o700)
-    tmp = path.with_suffix(".tmp")
-    tmp.write_text(json.dumps(history))
-    os.replace(tmp, path)
-  except OSError:
-    pass
-  record["recentDays"] = recent_days(history, today)
-  return record
-
-
 def access_token():
   cookie = bs.read_cookie(bs.profile_dir(PROVIDER), "auth.suno.com", "__client")
   if not cookie:
@@ -247,7 +181,7 @@ def billing():
 def main():
   now = time.time()
   try:
-    record = with_history(build_record(billing(), now), now)
+    record = build_record(billing(), now)
   except bs.SignedOut as signed_out:
     record = empty_record()
     record.update(signInRequired=True, usageStatusText="Not signed in", authHelpText=str(signed_out) or SIGN_IN_HELP)
