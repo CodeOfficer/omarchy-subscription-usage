@@ -1,0 +1,155 @@
+#!/usr/bin/python3
+"""Print Google AI Pro usage for the Agent Usage widget, as one JSON record.
+
+Omarchy's `omarchy-agent-usage-agy` collector supplies the base record: plan,
+sign-in help, and the local token history. It reads only Google's quota
+*summary*, which on AI Pro lists just the "Claude and GPT models" group. The
+Gemini pool is reported only by the per-model call the Gemini CLI uses,
+v1internal:retrieveUserQuota, so this asks that too and puts the Gemini pool
+first.
+
+Output adds `quotaPools` to the usual record: one entry per group of models
+that share a quota (same family, same remaining fraction, same reset), so the
+panel can show the per-model breakdown.
+
+The sign-in is read with Omarchy's own collector code and never printed or
+stored. Every value from Google is bounded and validated before it is printed.
+"""
+
+import importlib.machinery
+import importlib.util
+import json
+import math
+import os
+import re
+import subprocess
+import sys
+import time
+
+sys.dont_write_bytecode = True
+COLLECTOR = "/usr/bin/omarchy-agent-usage-agy"
+MAX_BUCKETS = 64
+MODEL_ID = re.compile(r"^[A-Za-z0-9._-]{1,80}$")
+
+# Families in the order the panel lists them, with the names people know.
+FAMILIES = (
+  ("gemini", "Gemini"),
+  ("claude", "Claude (in Antigravity)"),
+  ("gpt", "GPT (in Antigravity)"),
+  ("tab", "Tab completion"),
+)
+
+
+def base_record():
+  try:
+    out = subprocess.run([COLLECTOR, "--limits-only"], capture_output=True, text=True, timeout=60)
+    record = json.loads(out.stdout) if out.returncode == 0 else None
+  except Exception:
+    record = None
+  return record if isinstance(record, dict) else {"schemaVersion": 1, "limits": [], "recentDays": []}
+
+
+def load_collector():
+  loader = importlib.machinery.SourceFileLoader("omarchy_agy", COLLECTOR)
+  spec = importlib.util.spec_from_loader("omarchy_agy", loader)
+  module = importlib.util.module_from_spec(spec)
+  loader.exec_module(module)
+  return module
+
+
+def family_of(model_id):
+  lowered = model_id.lower()
+  for prefix, name in FAMILIES:
+    if lowered.startswith(prefix):
+      return prefix, name
+  return "other", "Other models"
+
+
+def fraction(value):
+  try:
+    number = float(value)
+  except (TypeError, ValueError):
+    return None
+  return min(1.0, max(0.0, number)) if math.isfinite(number) else None
+
+
+def reset_time(value):
+  text = str(value or "")
+  return text if re.match(r"^\d{4}-\d{2}-\d{2}T[\d:.]+(Z|[+-]\d{2}:\d{2})$", text) else ""
+
+
+def quota_pools(buckets):
+  pools = {}
+  for bucket in buckets[:MAX_BUCKETS]:
+    if not isinstance(bucket, dict):
+      continue
+    model = str(bucket.get("modelId") or "")
+    remaining = fraction(bucket.get("remainingFraction"))
+    if not MODEL_ID.match(model) or remaining is None:
+      continue
+    family, name = family_of(model)
+    reset = reset_time(bucket.get("resetTime"))
+    key = (family, round(remaining, 6), reset)
+    pool = pools.setdefault(key, {"family": family, "name": name, "used": round(1.0 - remaining, 4), "resetsAt": reset, "models": []})
+    pool["models"].append(model)
+  order = {prefix: i for i, (prefix, _) in enumerate(FAMILIES)}
+  return sorted(pools.values(), key=lambda p: (order.get(p["family"], 99), -p["used"]))
+
+
+def summary_limits(summary):
+  """The quota summary's groups other than Gemini, as extra limit rows."""
+  rows = []
+  groups = summary.get("groups") if isinstance(summary, dict) else None
+  for group in groups if isinstance(groups, list) else []:
+    if not isinstance(group, dict) or "gemini" in str(group.get("displayName") or "").lower():
+      continue
+    short = "Claude/GPT" if "claude" in str(group.get("displayName") or "").lower() else "Other"
+    for bucket in group.get("buckets") or []:
+      if not isinstance(bucket, dict):
+        continue
+      remaining = fraction(bucket.get("remainingFraction"))
+      if remaining is None:
+        continue
+      window = str(bucket.get("window") or "").lower()
+      title = f"{short} {'weekly' if window == 'weekly' else '5-hour'}"
+      rows.append({"label": title, "title": title, "percent": round(1.0 - remaining, 4), "resetsAt": reset_time(bucket.get("resetTime"))})
+  return rows
+
+
+def main():
+  record = base_record()
+  record["name"] = "Gemini"
+  try:
+    agy = load_collector()
+    now = time.time()
+    entries = [e for e in agy.logins() if agy.token_fresh(e, now)]
+    if not entries:
+      raise LookupError
+    token = entries[0]["accessToken"]
+    assist = agy.post("loadCodeAssist", token)
+    body = agy.project_body(assist)
+    quota = agy.post("retrieveUserQuota", token, body)
+    summary = agy.post("retrieveUserQuotaSummary", token, body)
+  except LookupError:
+    # No live sign-in: keep the base record's own status and help text.
+    print(json.dumps(record))
+    return
+  except Exception:
+    record["usageStatusText"] = "Gemini quota unavailable"
+    print(json.dumps(record))
+    return
+
+  buckets = quota.get("buckets") if isinstance(quota, dict) else None
+  pools = quota_pools(buckets if isinstance(buckets, list) else [])
+  limits = []
+  gemini = next((p for p in pools if p["family"] == "gemini"), None)
+  if gemini:
+    # Google reports only a rolling 5-hour window for the Gemini pool.
+    limits.append({"label": "Gemini (5-hour)", "title": "Gemini", "percent": gemini["used"], "resetsAt": gemini["resetsAt"], "primary": True})
+  limits.extend(summary_limits(summary))
+  record.update(limits=limits, quotaPools=pools, usageStatusText="", authHelpText="")
+  print(json.dumps(record))
+
+
+if __name__ == "__main__":
+  main()

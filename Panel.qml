@@ -273,6 +273,7 @@ Panel {
     property url iconSource: ""
     property bool tintIcon: false
     readonly property var weekly: provider ? provider.weekly : null
+    readonly property var headline: provider ? provider.headline : null
     readonly property bool behind: Model.behindPace(weekly, root.nowMs)
     spacing: Style.space(5)
     anchors.verticalCenter: parent ? parent.verticalCenter : undefined
@@ -296,7 +297,7 @@ Panel {
     Text {
       anchors.verticalCenter: parent.verticalCenter
       // Percent only, to keep the bar narrow; reset times are in the panel.
-      text: chip.weekly ? Model.percent(chip.weekly.used) : "—"
+      text: chip.headline ? Model.percent(chip.headline.used) : "—"
       color: chip.behind ? root.urgent : root.barForeground
       font.family: root.fontFamily
       font.pixelSize: Style.font.caption
@@ -309,6 +310,7 @@ Panel {
     property url iconSource: ""
     property bool tintIcon: false
     readonly property var weekly: provider ? provider.weekly : null
+    readonly property var headline: provider ? provider.headline : null
     readonly property bool behind: Model.behindPace(weekly, root.nowMs)
     spacing: Style.space(8)
 
@@ -337,9 +339,12 @@ Panel {
         }
 
         Text {
-          text: card.weekly
-            ? Model.percent(card.weekly.used) + " used · " + Model.resetText(card.weekly, root.nowMs)
-            : (card.provider.status || "Weekly limit unavailable")
+          textFormat: Text.PlainText
+          text: card.headline
+            ? Model.percent(card.headline.used)
+              + (Model.windowName(card.headline) === "weekly" ? " used · " : " of " + Model.windowName(card.headline) + " used · ")
+              + Model.resetText(card.headline, root.nowMs)
+            : (card.provider.status || "Usage limit unavailable")
           color: card.behind ? root.urgent : root.dim
           font.family: root.fontFamily
           font.pixelSize: Style.font.body
@@ -348,14 +353,14 @@ Panel {
     }
 
     Rectangle {
-      visible: !!card.weekly
+      visible: !!card.headline
       width: parent.width
       height: Style.space(5)
       radius: height / 2
       color: Qt.darker(root.foreground, 2.5)
 
       Rectangle {
-        width: parent.width * (card.weekly ? card.weekly.used : 0)
+        width: parent.width * (card.headline ? card.headline.used : 0)
         height: parent.height
         radius: parent.radius
         color: card.behind ? root.urgent : root.foreground
@@ -452,10 +457,11 @@ Panel {
       delegate: RowLayout {
         required property var modelData
         width: card.width
-        visible: String(modelData.label || "").toLowerCase().indexOf("weekly") !== 0
+        visible: String(modelData.label || "").toLowerCase().indexOf("weekly") !== 0 && !modelData.primary
 
         Text {
           Layout.fillWidth: true
+          textFormat: Text.PlainText
           text: modelData.label
           color: root.dim
           font.family: root.fontFamily
@@ -467,6 +473,102 @@ Panel {
           color: root.dim
           font.family: root.fontFamily
           font.pixelSize: Style.font.caption
+        }
+      }
+    }
+
+    // Quota by model: groups of models that share one allowance, where the
+    // provider reports them (Google does, per model).
+    Column {
+      visible: card.provider && Array.isArray(card.provider.pools) && card.provider.pools.length > 0
+      width: parent.width
+      spacing: Style.space(5)
+
+      Text {
+        text: "QUOTA BY MODEL"
+        color: root.dim
+        font.family: root.fontFamily
+        font.pixelSize: Style.font.caption
+        font.bold: true
+      }
+
+      Repeater {
+        model: card.provider && Array.isArray(card.provider.pools) ? card.provider.pools : []
+        delegate: Column {
+          required property var modelData
+          width: card.width
+          spacing: Style.space(1)
+
+          RowLayout {
+            width: parent.width
+
+            Text {
+              Layout.fillWidth: true
+              textFormat: Text.PlainText
+              text: modelData.label
+              color: root.foreground
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.caption
+            }
+
+            Text {
+              textFormat: Text.PlainText
+              text: Model.poolText(modelData, root.nowMs)
+              color: modelData.used > 0 ? root.foreground : root.dim
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.caption
+            }
+          }
+
+          Text {
+            width: parent.width
+            textFormat: Text.PlainText
+            text: modelData.models.join(", ")
+            color: root.dim
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.caption
+            wrapMode: Text.WordWrap
+            opacity: 0.8
+          }
+        }
+      }
+    }
+
+    // Tokens per model today, from the CLIs' own session logs.
+    Column {
+      visible: card.provider && Array.isArray(card.provider.todayModels) && card.provider.todayModels.length > 0
+      width: parent.width
+      spacing: Style.space(3)
+
+      Text {
+        text: "TODAY BY MODEL"
+        color: root.dim
+        font.family: root.fontFamily
+        font.pixelSize: Style.font.caption
+        font.bold: true
+      }
+
+      Repeater {
+        model: card.provider && Array.isArray(card.provider.todayModels) ? card.provider.todayModels : []
+        delegate: RowLayout {
+          required property var modelData
+          width: card.width
+
+          Text {
+            Layout.fillWidth: true
+            textFormat: Text.PlainText
+            text: modelData.model
+            color: root.dim
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.caption
+          }
+
+          Text {
+            text: Model.tokenCount(modelData.tokens) + " tokens"
+            color: root.dim
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.caption
+          }
         }
       }
     }

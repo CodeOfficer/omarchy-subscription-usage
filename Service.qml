@@ -21,6 +21,7 @@ Item {
   property string _geminiOutput: ""
   property string _geminiError: ""
 
+  readonly property string geminiCollector: String(Qt.resolvedUrl("bin/gemini-usage")).replace(/^file:\/\//, "")
   readonly property int refreshIntervalSec: intSetting("refreshIntervalSec", 300, 60, 3600)
 
   function setting(name, fallback) {
@@ -52,9 +53,9 @@ Item {
     _geminiError = ""
     claudeProcess.command = ["omarchy-agent-usage-claude", "--limits-only"]
     codexProcess.command = ["omarchy-agent-usage-codex", "--limits-only"]
-    // Gemini usage comes from Google Antigravity's plan limits, read with the
-    // sign-in the `agy` CLI keeps.
-    geminiProcess.command = ["omarchy-agent-usage-agy", "--limits-only"]
+    // Gemini usage comes from this plugin's own collector: Omarchy's
+    // Antigravity record plus Google's per-model quota (see bin/gemini-usage).
+    geminiProcess.command = [root.geminiCollector]
     claudeProcess.running = true
     codexProcess.running = true
     geminiProcess.running = true

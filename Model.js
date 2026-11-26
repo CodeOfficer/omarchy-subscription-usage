@@ -36,8 +36,45 @@ function normalizeLimit(limit, nowMs) {
     used: used,
     remaining: remaining,
     resetMs: resetMs,
-    timeRemainingMs: timeRemaining
+    timeRemainingMs: timeRemaining,
+    primary: limit.primary === true
   }
+}
+
+var MODEL_ID = /^[A-Za-z0-9._-]{1,80}$/
+
+// Groups of models that share one quota (Google reports these per model).
+// Bounded and validated: the values come from a network service.
+function parsePools(raw, nowMs) {
+  var list = Array.isArray(raw) ? raw.slice(0, 16) : []
+  var pools = []
+  for (var i = 0; i < list.length; i++) {
+    var pool = list[i] || {}
+    var models = Array.isArray(pool.models) ? pool.models.slice(0, 32) : []
+    var names = []
+    for (var j = 0; j < models.length; j++) {
+      var id = String(models[j] || "")
+      if (MODEL_ID.test(id)) names.push(id)
+    }
+    if (names.length === 0) continue
+    var limit = normalizeLimit({ title: String(pool.name || "Models").substring(0, 40), percent: pool.used, resetsAt: pool.resetsAt }, nowMs)
+    limit.models = names
+    pools.push(limit)
+  }
+  return pools
+}
+
+// Today's tokens per model, largest first.
+function parseModelTokens(raw) {
+  var rows = []
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return rows
+  var keys = Object.keys(raw).slice(0, 32)
+  for (var i = 0; i < keys.length; i++) {
+    var tokens = Math.max(0, number(raw[keys[i]], 0))
+    if (MODEL_ID.test(keys[i]) && tokens > 0) rows.push({ model: keys[i], tokens: tokens })
+  }
+  rows.sort(function(a, b) { return b.tokens - a.tokens })
+  return rows
 }
 
 function parseProvider(stdout, providerId, nowMs) {
@@ -46,9 +83,12 @@ function parseProvider(stdout, providerId, nowMs) {
     var limits = Array.isArray(raw.limits) ? raw.limits : []
     var weekly = normalizeLimit(findWeekly(limits), nowMs)
     var normalized = []
+    var primary = null
     for (var i = 0; i < limits.length; i++) {
       var item = normalizeLimit(limits[i], nowMs)
-      if (item) normalized.push(item)
+      if (!item) continue
+      normalized.push(item)
+      if (item.primary && !primary) primary = item
     }
     return {
       ok: true,
@@ -59,7 +99,12 @@ function parseProvider(stdout, providerId, nowMs) {
         status: [String(raw.usageStatusText || ""), String(raw.authHelpText || "")]
           .filter(function(part) { return part !== "" }).join(" · "),
         weekly: weekly,
+        // The number the bar shows: the weekly window when there is one,
+        // else the limit the collector marks as the plan's own.
+        headline: weekly || primary || normalized[0] || null,
         limits: normalized,
+        pools: parsePools(raw.quotaPools, nowMs),
+        todayModels: parseModelTokens(raw.todayTokensByModel),
         recentDays: Array.isArray(raw.recentDays) ? raw.recentDays : [],
         updatedAt: String(raw.updatedAt || "")
       }
@@ -113,6 +158,20 @@ function resetText(limit, nowMs) {
 function shortResetText(limit, nowMs) {
   if (!limit) return ""
   return started(limit) ? countdown(limit.resetMs, nowMs) : "not started"
+}
+
+// An untouched pool's reset keeps rolling forward, so it says nothing yet.
+function poolText(pool, nowMs) {
+  if (!pool) return ""
+  if (pool.used <= 0) return "unused"
+  return percent(pool.used) + " used · " + shortResetText(pool, nowMs)
+}
+
+function windowName(limit) {
+  var label = String(limit ? limit.label : "").toLowerCase()
+  if (label.indexOf("weekly") === 0) return "weekly"
+  var match = /\(([^)]+)\)/.exec(String(limit ? limit.label : ""))
+  return match ? match[1] : ""
 }
 
 function expectedText(weekly, nowMs) {
@@ -173,6 +232,10 @@ var exportsObject = {
   countdown: countdown,
   paceText: paceText,
   started: started,
+  parsePools: parsePools,
+  parseModelTokens: parseModelTokens,
+  poolText: poolText,
+  windowName: windowName,
   resetText: resetText,
   shortResetText: shortResetText,
   expectedText: expectedText,
