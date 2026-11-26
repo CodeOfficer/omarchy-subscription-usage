@@ -149,6 +149,7 @@ Panel {
           provider: root.providerAt(modelData)
           iconSource: service.iconOf(modelData)
           tintIcon: service.tinted(modelData)
+          accent: service.accentOf(modelData)
         }
       }
     }
@@ -338,6 +339,8 @@ Panel {
     required property var provider
     property url iconSource: ""
     property bool tintIcon: false
+    // The icon's own colour for the percent; the theme's when the icon is tinted.
+    property string accent: ""
     readonly property var headline: provider ? provider.headline : null
     readonly property bool behind: Model.paceAlarm(provider, root.nowMs, root.paceTolerance)
     spacing: Style.space(4)
@@ -355,7 +358,7 @@ Panel {
       // Percent only by default, to keep the bar narrow (setting barDetail).
       text: !chip.headline ? "—"
         : Model.percent(chip.headline.used) + (root.barShowsReset ? " · " + Model.shortResetText(chip.headline, root.nowMs) : "")
-      color: chip.behind ? root.urgent : root.barForeground
+      color: chip.behind ? root.urgent : (chip.accent !== "" ? chip.accent : root.barForeground)
       font.family: root.fontFamily
       font.pixelSize: Style.font.caption
     }

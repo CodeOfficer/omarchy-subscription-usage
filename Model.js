@@ -13,12 +13,14 @@ var PACE_TOLERANCE = 0.05
 //   command  an Omarchy collector on PATH;  bin  one of this plugin's bin/ scripts
 //   signIn   { url }: no CLI keeps a sign-in, so the panel offers a Sign in
 //            button that opens `url` in a browser profile of the plugin's own
+//   accent   the icon's colour, for the bar's percent; none for icons that
+//            are tinted to the theme (they follow the bar's text colour)
 //   setup    { label, command }: a one-time terminal step the panel offers
 //            while the provider has no live answer and says setupNeeded
 var PROVIDERS = [
-  { id: "claude", name: "Claude", setting: "showClaude", defaultOn: true, command: ["omarchy-agent-usage-claude", "--limits-only"], icon: "claude.svg", tint: false },
+  { id: "claude", name: "Claude", setting: "showClaude", defaultOn: true, command: ["omarchy-agent-usage-claude", "--limits-only"], icon: "claude.svg", tint: false, accent: "#D97757" },
   { id: "codex", name: "Codex", setting: "showCodex", defaultOn: true, command: ["omarchy-agent-usage-codex", "--limits-only"], icon: "codex.svg", tint: true },
-  { id: "gemini", name: "Gemini", setting: "showGemini", defaultOn: true, bin: "gemini-usage", icon: "gemini.svg", tint: false,
+  { id: "gemini", name: "Gemini", setting: "showGemini", defaultOn: true, bin: "gemini-usage", icon: "gemini.svg", tint: false, accent: "#9177C7",
     setup: { label: "Set up Gemini auto-refresh", command: "omp login antigravity-cli" } },
   { id: "suno", name: "Suno", setting: "showSuno", defaultOn: false, bin: "suno-usage", icon: "suno.svg", tint: true, signIn: { url: "https://suno.com" } }
 ]

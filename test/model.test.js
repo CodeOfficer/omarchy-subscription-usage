@@ -179,6 +179,8 @@ test("provider table: commands, placeholders, defaults", () => {
   assert.strictEqual(M.providerConfig("suno").defaultOn, false);
   assert.strictEqual(M.placeholder(M.providerConfig("codex")).status, "Loading…");
   assert.strictEqual(M.providerConfig("nope"), null);
+  // Percent colours match the icons; tinted icons follow the theme.
+  assert.deepStrictEqual(M.PROVIDERS.map((p) => p.accent || ""), ["#D97757", "", "#9177C7", ""]);
   // Claude/Codex: a week is paced as a cap.
   const c = M.parseProvider(JSON.stringify({ limits: [{ label: "Weekly (7-day)", percent: 0.9, resetsAt: "2026-11-29T12:00:00Z" }] }), "claude", now, null).provider;
   assert.strictEqual(c.pace, c.weekly);

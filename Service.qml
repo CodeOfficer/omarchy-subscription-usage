@@ -35,6 +35,7 @@ Item {
   function config(id) { return Model.providerConfig(id) }
   function iconOf(id) { var c = config(id); return c ? Qt.resolvedUrl(c.icon) : "" }
   function tinted(id) { var c = config(id); return !!c && c.tint === true }
+  function accentOf(id) { var c = config(id); return c && c.accent ? c.accent : "" }
   function canSignIn(id) { var c = config(id); return !!c && !!c.signIn }
   function canSetUp(id) { var c = config(id); return !!c && !!c.setup }
 
