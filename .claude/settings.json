@@ -5,7 +5,7 @@
       "Bash(node test/integration.test.js)",
       "Bash(node test/integration.test.js --live)",
       "Bash(omarchy plugin validate:*)",
-      "Bash(omarchy-shell codeofficer.agent-usage:*)",
+      "Bash(omarchy-shell codeofficer.subscription-usage:*)",
       "Bash(./bin/gemini-usage)"
     ]
   }
