@@ -16,7 +16,7 @@ Click it for detail in three views, switched with `←` `→` or `1` `2` `3`:
 3. **Debug**: checks on each provider's data, so you can tell when a provider changes what it
    reports (✓ pass, ✗ fail, ◆ changed).
 
-![Agent Usage panel for Omarchy](preview.png)
+![Agent Usage: the Overview and Models views](preview.png)
 
 > Started as a fork of [robzolkos/omarchy-agent-usage](https://github.com/robzolkos/omarchy-agent-usage),
 > which covers Claude and Codex.
