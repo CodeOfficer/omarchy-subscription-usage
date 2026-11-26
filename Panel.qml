@@ -565,13 +565,15 @@ Panel {
           delegate: Column {
             required property var modelData
             readonly property real tokens: Model.dayTokens(modelData)
+            // null: before the provider's history began (Suno), not zero.
+            readonly property bool known: modelData.messageCount !== null && modelData.messageCount !== undefined
             readonly property real peak: Math.max(1, Model.recentPeak(card.provider.recentDays))
             width: (dailyChart.width - dailyChart.spacing * 6) / 7
             spacing: Style.space(2)
 
             Text {
               width: parent.width
-              text: Model.tokenCount(parent.tokens)
+              text: parent.known ? Model.tokenCount(parent.tokens) : "–"
               color: root.dim
               font.family: root.fontFamily
               font.pixelSize: Style.font.caption

@@ -190,7 +190,18 @@ def recent_days(history, today, count=7):
     else:
       start = entry.get("first", 0)
     rows.append({"date": day, "messageCount": max(0, int(entry.get("last", 0)) - int(start))})
-  return rows
+  return pad_days(rows, today, count)
+
+
+def pad_days(rows, today, count):
+  """Always `count` days ending today, like the other charts; a day before
+  the history began has messageCount None (shown as unknown, not zero)."""
+  from datetime import date, timedelta as td
+  by_date = {r["date"]: r for r in rows}
+  end = date.fromisoformat(today)
+  days = [(end - td(days=i)).isoformat() for i in range(count - 1, -1, -1)]
+  first = min(by_date) if by_date else today
+  return [by_date.get(d) or {"date": d, "messageCount": None if d < first else 0} for d in days]
 
 
 def with_history(record, now, path=None):

@@ -143,8 +143,10 @@ def daily_history_charts_credits_per_day():
   suno.note_usage(h, "2026-11-24", 130, "P1")
   suno.note_usage(h, "2026-11-25", 130, "P1")   # nothing used
   suno.note_usage(h, "2026-11-26", 200, "P1")
-  assert suno.recent_days(h, "2026-11-26") == [
+  assert suno.recent_days(h, "2026-11-26")[-3:] == [
     {"date": "2026-11-24", "messageCount": 30}, {"date": "2026-11-25", "messageCount": 0}, {"date": "2026-11-26", "messageCount": 70}]
+  # Days before the history began are unknown, not zero.
+  assert [r["messageCount"] for r in suno.recent_days(h, "2026-11-26")[:4]] == [None] * 4
   suno.note_usage(h, "2026-11-30", 20, "P2")    # new billing month
   assert suno.recent_days(h, "2026-11-30")[-1] == {"date": "2026-11-30", "messageCount": 20}
   for d in range(1, 20):
@@ -158,8 +160,9 @@ def history_is_written_beside_the_token_cache():
   with tempfile.TemporaryDirectory() as tmp:
     path = Path(tmp) / "h.json"
     r = suno.with_history(suno.build_record(INFO, NOW), NOW, path)
-    assert r["recentDays"] == [{"date": r["recentDays"][0]["date"], "messageCount": 0}]
-    assert json.loads(path.read_text())[r["recentDays"][0]["date"]]["last"] == 500
+    assert len(r["recentDays"]) == 7 and r["recentDays"][-1]["messageCount"] == 0
+    assert r["recentDays"][0]["messageCount"] is None
+    assert json.loads(path.read_text())[r["recentDays"][-1]["date"]]["last"] == 500
   assert suno.with_history(suno.empty_record(), NOW)["recentDays"] == []
 
 
